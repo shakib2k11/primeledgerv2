@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ document.number }} | Prime Ledger{% endblock %}
+{% block content %}
+<header class="page-heading detail-heading">
+  <div>
+    <div class="breadcrumb">
+      <a href="{% if kind == 'sale' %}{% url 'sale-list' %}{% else %}{% url 'purchase-list' %}{% endif %}">{{ document.get_kind_display }}s</a>
+      <span>/</span><span>{{ document.number }}</span>
+    </div>
+    <h1>{{ document.number }}</h1>
+    <p class="lede">{{ document.party.name }} · {{ document.document_date|date:"d M Y" }}</p>
+  </div>
+  <div class="heading-actions">
+    <a class="button secondary" href="{% if kind == 'sale' %}{% url 'sale-document-pdf' document.pk %}{% else %}{% url 'purchase-document-pdf' document.pk %}{% endif %}">{% if kind == 'sale' %}Download invoice{% else %}Download PDF{% endif %}</a>
+    {% if document.status == 'draft' and not document.period.is_locked %}
+      {% if kind == 'sale' and can_manage_sales %}
+        <a class="button secondary" href="{% url 'sale-edit' document.pk %}">Edit draft</a>
+        <a class="button danger" href="{% url 'sale-delete' document.pk %}">Delete draft</a>
+      {% elif kind == 'purchase' and can_manage_purchases %}
+        <a class="button secondary" href="{% url 'purchase-edit' document.pk %}">Edit draft</a>
+        <a class="button danger" href="{% url 'purchase-delete' document.pk %}">Delete draft</a>
+      {% endif %}
+    {% endif %}
+    <span class="status-badge large {% if document.status == 'posted' %}positive{% else %}attention{% endif %}">{{ document.get_status_display }}</span>
+  </div>
+</header>
+
+<section class="detail-grid">
+  <article class="panel">
+    <div class="detail-meta">
+      <div><span>Party</span><strong>{{ document.party.name }}</strong></div>
+      <div><span>Fiscal period</span><strong>{{ document.period.name }}</strong></div>
+      <div><span>Debit account</span><strong>{{ document.debit_account.code }} · {{ document.debit_account.name }}</strong></div>
+      <div><span>Credit account</span><strong>{{ document.credit_account.code }} · {{ document.credit_account.name }}</strong></div>
+    </div>
+    <div class="table-wrap journal-lines">
+      <table>
+        <thead><tr><th>Item</th><th>Description</th><th class="numeric">Quantity</th><th class="numeric">Unit price</th><th class="numeric">Line total</th></tr></thead>
+        <tbody>
+          {% for line in document.lines.all %}
+          <tr>
+            <td><strong>{{ line.product.name }}</strong><small>{% if line.product.is_service %}Service{% else %}{{ line.product.unit }}{% endif %}</small></td>
+            <td>{{ line.description }}</td>
+            <td class="numeric">{{ line.quantity|floatformat:3 }}</td>
+            <td class="numeric money">{{ line.unit_price|floatformat:2 }}</td>
+            <td class="numeric money">{{ line.line_total|floatformat:2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          {% if document.discount_amount %}
+          <tr><th colspan="4">Subtotal ({{ business.currency }})</th><th class="numeric money">{{ document.subtotal|floatformat:2 }}</th></tr>
+          <tr><th colspan="4">Discount{% if document.discount_type == 'percentage' %} ({{ document.discount_value|floatformat:2 }}%){% endif %}</th><th class="numeric money">−{{ document.discount_amount|floatformat:2 }}</th></tr>
+          {% endif %}
+          <tr><th colspan="4">Total ({{ business.currency }})</th><th class="numeric money">{{ document.total|floatformat:2 }}</th></tr>
+        </tfoot>
+      </table>
+    </div>
+  </article>
+  <aside class="panel posting-panel">
+    <span class="overline">Posting control</span>
+    {% if document.status == 'posted' %}
+      <h2>Posted transaction</h2>
+      <p>The journal, voucher, and stock movements were created atomically.</p>
+      {% if document.journal_entry %}<a class="button secondary wide" href="{% url 'journal-detail' document.journal_entry.pk %}">View journal entry</a>{% endif %}
+      <div class="assurance"><span>✓</span> Financial and stock history locked</div>
+    {% else %}
+      <h2>Ready for review</h2>
+      <p>Posting is permanent. Sales require sufficient stock; services do not create stock movement.</p>
+      <dl>
+        {% if document.discount_amount %}
+        <div><dt>Subtotal</dt><dd>{{ document.subtotal|floatformat:2 }}</dd></div>
+        <div><dt>Discount</dt><dd>−{{ document.discount_amount|floatformat:2 }}</dd></div>
+        {% endif %}
+        <div><dt>Document total</dt><dd>{{ document.total|floatformat:2 }}</dd></div>
+        <div><dt>Line count</dt><dd>{{ document.lines.count }}</dd></div>
+      </dl>
+      {% if kind == 'sale' and can_post_sales %}<a class="button primary wide" href="{% url 'sale-post' document.pk %}">Review &amp; post sale</a>{% elif kind == 'purchase' and can_post_purchases %}<a class="button primary wide" href="{% url 'purchase-post' document.pk %}">Review &amp; post purchase</a>{% endif %}
+    {% endif %}
+  </aside>
+</section>
+{% endblock %}

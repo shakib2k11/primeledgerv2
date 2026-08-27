@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Sign in | Prime Ledger{% endblock %}
+{% block body_class %}auth-body{% endblock %}
+{% block layout %}
+<main class="auth-layout">
+  <section class="auth-brand-panel">
+    <a class="brand auth-brand" href="/"><span class="brand-mark">PL</span><span><strong>Prime Ledger</strong><small>Business operations</small></span></a>
+    <div><span class="overline light">Operational clarity</span><h1>Know where the business stands.</h1><p>A focused workspace for inventory, relationships, and trustworthy financial records.</p></div>
+    <small>Built for disciplined daily work.</small>
+  </section>
+  <section class="auth-form-side"><div class="auth-panel"><span class="overline">Secure access</span><h2>Welcome back</h2><p class="lede">Sign in to continue to your business workspace.</p>{% if form.errors %}<div class="alert error">The username or password was not recognised.</div>{% endif %}<form method="post" class="form-stack">{% csrf_token %}<label>Username {{ form.username }}</label><label>Password {{ form.password }}</label>{% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}<button class="button primary wide" type="submit">Sign in</button></form></div></section>
+</main>
+{% endblock %}

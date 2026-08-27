@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} | Prime Ledger{% endblock %}
+{% block content %}
+<header class="page-heading compact"><div><span class="overline">General ledger</span><h1>{{ title }}</h1><p class="lede">Enter at least two lines. Drafts may be unbalanced, but posting requires equal totals.</p></div></header>
+<form method="post" class="journal-form" novalidate>{% csrf_token %}
+  <section class="panel record-form journal-header-form">
+    {% if form.non_field_errors %}<div class="alert error form-wide">{{ form.non_field_errors }}</div>{% endif %}
+    {% for field in form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>{% endfor %}
+  </section>
+  <section class="panel line-editor" data-formset>
+    <div class="panel-heading"><div><span class="overline">Double entry</span><h2>Journal lines</h2></div><div class="line-actions"><span class="muted">Use 0.00 in the unused amount column</span><button class="button tertiary small" type="button" data-add-line>Add line</button></div></div>
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}<div class="alert error line-error">{{ formset.non_form_errors }}</div>{% endif %}
+    <div class="line-grid line-grid-head"><span>Account</span><span>Party</span><span>Description</span><span>Debit</span><span>Credit</span><span></span></div>
+    <div data-formset-lines>
+      {% for line_form in formset %}
+      <div class="line-grid">{{ line_form.id }}<div>{{ line_form.account }}{{ line_form.account.errors }}</div><div>{{ line_form.party }}{{ line_form.party.errors }}</div><div>{{ line_form.description }}{{ line_form.description.errors }}</div><div>{{ line_form.debit }}{{ line_form.debit.errors }}</div><div>{{ line_form.credit }}{{ line_form.credit.errors }}</div><div class="delete-line">{% if line_form.instance.pk %}{{ line_form.DELETE }} <label for="{{ line_form.DELETE.id_for_label }}">Remove</label>{% endif %}</div></div>
+      {% endfor %}
+    </div>
+    <template><div class="line-grid">{{ formset.empty_form.id }}<div>{{ formset.empty_form.account }}</div><div>{{ formset.empty_form.party }}</div><div>{{ formset.empty_form.description }}</div><div>{{ formset.empty_form.debit }}</div><div>{{ formset.empty_form.credit }}</div><div></div></div></template>
+  </section>
+  <div class="form-actions journal-actions"><a class="button secondary" href="{% url 'journal-list' %}">Cancel</a><button class="button primary" type="submit">Save draft</button></div>
+</form>
+{% endblock %}

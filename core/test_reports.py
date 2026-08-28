@@ -5,7 +5,14 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from accounting.models import Account, FiscalPeriod, JournalEntry, MoneyReceipt, Voucher
+from accounting.models import (
+    Account,
+    FiscalPeriod,
+    JournalEntry,
+    JournalLine,
+    MoneyReceipt,
+    Voucher,
+)
 from core.application.services import CONTACTS_VIEW
 from core.models import Business, Membership, Party, Role
 from operations.models import TradeDocument
@@ -223,6 +230,62 @@ class BusinessReportTests(TestCase):
             amount=Decimal("999.00"),
             receipt_date=date(2026, 8, 22),
         )
+        opening_journal = JournalEntry.objects.create(
+            business=self.business,
+            period=self.period,
+            reference="OPENING:REPORT",
+            description="Opening report balance",
+            entry_date=date(2026, 7, 31),
+            created_by=self.owner,
+        )
+        JournalLine.objects.create(
+            entry=opening_journal,
+            account=self.cash,
+            debit=Decimal("100.00"),
+        )
+        JournalLine.objects.create(
+            entry=opening_journal,
+            account=self.sales,
+            credit=Decimal("100.00"),
+        )
+        JournalEntry.objects.filter(pk=opening_journal.pk).update(posted=True)
+        activity_journal = JournalEntry.objects.create(
+            business=self.business,
+            period=self.period,
+            reference="ACTIVITY:REPORT",
+            description="Selected range activity",
+            entry_date=date(2026, 8, 15),
+            created_by=self.owner,
+        )
+        JournalLine.objects.create(
+            entry=activity_journal,
+            account=self.cash,
+            debit=Decimal("250.00"),
+        )
+        JournalLine.objects.create(
+            entry=activity_journal,
+            account=self.sales,
+            credit=Decimal("250.00"),
+        )
+        JournalEntry.objects.filter(pk=activity_journal.pk).update(posted=True)
+        hidden_activity = JournalEntry.objects.create(
+            business=self.other,
+            period=other_period,
+            reference="ACTIVITY:HIDDEN",
+            description="Other tenant activity",
+            entry_date=date(2026, 8, 15),
+        )
+        JournalLine.objects.create(
+            entry=hidden_activity,
+            account=other_cash,
+            debit=Decimal("999.00"),
+        )
+        JournalLine.objects.create(
+            entry=hidden_activity,
+            account=other_sales,
+            credit=Decimal("999.00"),
+        )
+        JournalEntry.objects.filter(pk=hidden_activity.pk).update(posted=True)
         self.client.login(username="report-owner", password="password")
 
     def test_contact_report_filters_types_and_is_tenant_scoped(self):
@@ -250,7 +313,8 @@ class BusinessReportTests(TestCase):
     def test_invoice_report_contains_only_posted_tenant_sales(self):
         response = self.client.get(reverse("invoice-report"))
         self.assertContains(response, "Net invoice value")
-        self.assertContains(response, "Reporting period")
+        self.assertContains(response, "Payments received")
+        self.assertContains(response, "Outstanding balance")
         self.assertContains(response, 'class="report-row-action"')
         self.assertContains(response, "26000001")
         self.assertContains(response, "450.00")
@@ -287,6 +351,41 @@ class BusinessReportTests(TestCase):
         )
         self.assertTrue(document.content.startswith(b"%PDF"))
 
+    def test_account_activity_report_supports_any_date_range_and_all_accounts(self):
+        filters = {"date_from": "2026-08-01", "date_to": "2026-08-31"}
+        response = self.client.get(reverse("account-activity-report"), filters)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Account activity summary")
+        self.assertContains(response, "Opening Dr")
+        self.assertContains(response, "Period debit")
+        self.assertContains(response, "Closing Cr")
+        self.assertContains(response, "1010 · Cash")
+        self.assertContains(response, "4010 · Sales")
+        self.assertContains(response, "350.00", count=2)
+        self.assertNotContains(response, "999.00")
+
+        csv_response = self.client.get(reverse("account-activity-report-csv"), filters)
+        self.assertEqual(csv_response.status_code, 200)
+        csv_text = csv_response.content.decode()
+        self.assertIn("Opening debit (BDT)", csv_text)
+        self.assertIn("1010,Cash,Asset,Active,100.00,0.00,250.00,0.00,350.00,0.00", csv_text)
+        self.assertIn("4010,Sales,Income,Active,0.00,100.00,0.00,250.00,0.00,350.00", csv_text)
+        self.assertNotIn("999.00", csv_text)
+
+        pdf_response = self.client.get(reverse("account-activity-report-pdf"), filters)
+        self.assertEqual(pdf_response.status_code, 200)
+        self.assertTrue(pdf_response.content.startswith(b"%PDF"))
+        invalid = self.client.get(
+            reverse("account-activity-report"),
+            {"date_from": "2026-09-01", "date_to": "2026-08-01"},
+        )
+        self.assertContains(invalid, "From date cannot be after to date.")
+        invalid_csv = self.client.get(
+            reverse("account-activity-report-csv"),
+            {"date_from": "2026-09-01", "date_to": "2026-08-01"},
+        )
+        self.assertEqual(invalid_csv.status_code, 400)
+
     def test_report_permissions_are_enforced_per_domain(self):
         self.client.logout()
         self.client.login(username="contact-viewer", password="password")
@@ -298,3 +397,4 @@ class BusinessReportTests(TestCase):
         self.assertEqual(self.client.get(reverse("contact-report")).status_code, 200)
         self.assertEqual(self.client.get(reverse("invoice-report")).status_code, 403)
         self.assertEqual(self.client.get(reverse("money-receipt-report")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("account-activity-report")).status_code, 403)

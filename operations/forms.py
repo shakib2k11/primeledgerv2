@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 from django import forms
@@ -131,3 +132,119 @@ TradeLineFormSet = inlineformset_factory(
     validate_min=True,
     can_delete=True,
 )
+
+
+class ReceiveSalePaymentForm(forms.Form):
+    payment_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        initial=timezone.localdate,
+    )
+    payment_account = forms.ModelChoiceField(queryset=Account.objects.none())
+    amount = forms.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+    )
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
+    idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
+    confirm = forms.BooleanField(
+        label="I confirm that this payment has been received and should be posted.",
+    )
+
+    def __init__(self, *args, business=None, sale=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.business = business
+        self.sale = sale
+        self.fields["payment_account"].queryset = Account.objects.filter(
+            business=business,
+            is_active=True,
+            system_role__in=[
+                Account.SystemRole.CASH,
+                Account.SystemRole.BANK,
+                Account.SystemRole.MOBILE_MONEY,
+            ],
+        ).order_by("code")
+        if not self.is_bound:
+            self.initial.setdefault("amount", sale.balance_due)
+            self.initial.setdefault("idempotency_key", uuid.uuid4())
+        self.fields["amount"].help_text = (
+            f"Outstanding balance: {sale.balance_due:.2f} {business.currency}."
+        )
+        self.fields["payment_account"].help_text = (
+            "The selected Cash, Bank, or Mobile Financial Services account will be debited."
+        )
+
+    def clean_payment_date(self):
+        payment_date = self.cleaned_data["payment_date"]
+        if payment_date > timezone.localdate():
+            raise forms.ValidationError("Payment date cannot be in the future.")
+        return payment_date
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount > self.sale.balance_due:
+            raise forms.ValidationError(
+                f"Payment cannot exceed the remaining balance of {self.sale.balance_due:.2f}."
+            )
+        return amount
+
+
+class PayPurchaseForm(forms.Form):
+    payment_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        initial=timezone.localdate,
+    )
+    payment_account = forms.ModelChoiceField(queryset=Account.objects.none())
+    amount = forms.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+    )
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
+    idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
+    confirm = forms.BooleanField(
+        label="I confirm that this supplier payment should be posted.",
+    )
+
+    def __init__(self, *args, business=None, purchase=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.business = business
+        self.purchase = purchase
+        self.fields["payment_account"].queryset = Account.objects.filter(
+            business=business,
+            is_active=True,
+            system_role__in=[
+                Account.SystemRole.CASH,
+                Account.SystemRole.BANK,
+                Account.SystemRole.MOBILE_MONEY,
+            ],
+        ).order_by("code")
+        if not self.is_bound:
+            self.initial.setdefault("amount", purchase.balance_due)
+            self.initial.setdefault("idempotency_key", uuid.uuid4())
+        self.fields["amount"].help_text = (
+            f"Outstanding payable: {purchase.balance_due:.2f} {business.currency}."
+        )
+        self.fields["payment_account"].help_text = (
+            "The selected Cash, Bank, or Mobile Financial Services account will be credited."
+        )
+
+    def clean_payment_date(self):
+        payment_date = self.cleaned_data["payment_date"]
+        if payment_date > timezone.localdate():
+            raise forms.ValidationError("Payment date cannot be in the future.")
+        return payment_date
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount > self.purchase.balance_due:
+            raise forms.ValidationError(
+                f"Payment cannot exceed the remaining balance of {self.purchase.balance_due:.2f}."
+            )
+        return amount

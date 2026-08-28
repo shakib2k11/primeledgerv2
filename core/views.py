@@ -15,6 +15,17 @@ from django.utils import timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
+from .pdf import (
+    INK,
+    INK_SOFT,
+    PAGE_MARGIN,
+    clean_text,
+    draw_empty_state,
+    draw_page_footer,
+    draw_report_header,
+    draw_table_header,
+    draw_table_row_background,
+)
 from .forms import InventoryUnitForm, PartyForm, ProductForm, StockMovementForm, UnitInheritanceForm
 from .application.services import (
     ACCOUNTING_VIEW,
@@ -419,42 +430,68 @@ def stock_movement_pdf(request):
     pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
     width, height = A4
     pdf.setTitle(f"{business.name} stock movement register")
-    y = height - 48
-    pdf.setFont("Helvetica-Bold", 15)
-    pdf.drawString(42, y, business.name)
-    y -= 22
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(42, y, "Stock movement register")
-    y -= 16
-    pdf.setFont("Helvetica", 8)
-    pdf.drawString(42, y, f"Currency: {business.currency}")
-    y -= 24
-    pdf.setFont("Helvetica-Bold", 8)
-    pdf.drawString(42, y, "Number")
-    pdf.drawString(100, y, "Date")
-    pdf.drawString(175, y, "Item")
-    pdf.drawString(330, y, "Direction")
-    pdf.drawRightString(445, y, "Quantity")
-    pdf.drawRightString(width - 42, y, "Unit cost")
-    y -= 9
-    pdf.line(42, y, width - 42, y)
-    pdf.setFont("Helvetica", 8)
+    pdf.setAuthor("Prime Ledger")
     rows = list(movements)
+    page_number = 1
+
+    def header():
+        return draw_report_header(
+            pdf,
+            business,
+            "Stock movement register",
+            page_number=page_number,
+            metadata=(
+                ("Currency", business.currency),
+                ("Record basis", "Append-only movements"),
+            ),
+        )
+
+    def columns(current_y):
+        return draw_table_header(
+            pdf,
+            current_y,
+            (
+                (PAGE_MARGIN, "Number", "left"),
+                (112, "Date", "left"),
+                (185, "Item", "left"),
+                (350, "Direction", "left"),
+                (455, "Quantity", "right"),
+                (width - PAGE_MARGIN, f"Unit cost ({business.currency})", "right"),
+            ),
+            width=width,
+        )
+
+    width, height, y = header()
+    y = columns(y)
     if not rows:
-        y -= 22
-        pdf.drawString(42, y, "No records for the selected filters.")
-    for movement in rows:
-        if y < 55:
+        y = draw_empty_state(
+            pdf,
+            y,
+            "No stock movements match the selected filters",
+            width=width,
+        )
+    for row_index, movement in enumerate(rows):
+        if y < 70:
+            draw_page_footer(pdf, width=width, page_number=page_number)
             pdf.showPage()
-            y = height - 48
-            pdf.setFont("Helvetica", 8)
-        y -= 18
-        pdf.drawString(42, y, movement.number)
-        pdf.drawString(100, y, timezone.localtime(movement.occurred_at).strftime("%d-%b-%Y"))
-        pdf.drawString(175, y, movement.product.name[:25])
-        pdf.drawString(330, y, movement.get_direction_display())
-        pdf.drawRightString(445, y, f"{movement.quantity:.3f} {movement.product.unit.symbol}")
-        pdf.drawRightString(width - 42, y, f"{movement.unit_cost:.2f}")
+            page_number += 1
+            _, _, y = header()
+            y = columns(y)
+        draw_table_row_background(pdf, y, width=width, row_index=row_index)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.drawString(PAGE_MARGIN, y, movement.number)
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7.5)
+        pdf.drawString(112, y, timezone.localtime(movement.occurred_at).strftime("%d %b %Y"))
+        pdf.drawString(185, y, clean_text(movement.product.name, 26))
+        pdf.drawString(350, y, movement.get_direction_display())
+        pdf.drawRightString(455, y, f"{movement.quantity:.3f} {movement.product.unit.symbol}")
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.drawRightString(width - PAGE_MARGIN, y, f"{movement.unit_cost:.2f}")
+        y -= 20
+    draw_page_footer(pdf, width=width, page_number=page_number)
     pdf.save()
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = 'attachment; filename="stock-movement-register.pdf"'

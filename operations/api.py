@@ -1,7 +1,9 @@
+import uuid
 from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
@@ -15,9 +17,20 @@ from core.application.services import (
 )
 from core.models import Party, Product
 from core.infrastructure.numbering import allocate_reference_number
-from operations.application.services import PostTradeDocumentCommand, post_trade_document
-from operations.infrastructure.repositories import DjangoTradeDocumentRepository
-from operations.models import TradeDocument, TradeLine
+from operations.application.services import (
+    PayPurchaseCommand,
+    PostTradeDocumentCommand,
+    ReceiveSalePaymentCommand,
+    pay_purchase,
+    post_trade_document,
+    receive_sale_payment,
+)
+from operations.infrastructure.repositories import (
+    DjangoPurchasePaymentRepository,
+    DjangoSalePaymentRepository,
+    DjangoTradeDocumentRepository,
+)
+from operations.models import PurchasePayment, SalePayment, TradeDocument, TradeLine
 
 
 class TradeLineSerializer(serializers.ModelSerializer):
@@ -35,12 +48,89 @@ class TradeLineSerializer(serializers.ModelSerializer):
             self.fields["product"].queryset = Product.objects.filter(business=business, is_active=True)
 
 
+class SalePaymentSerializer(serializers.ModelSerializer):
+    payment_account_name = serializers.CharField(
+        source="payment_account.name",
+        read_only=True,
+    )
+    money_receipt_number = serializers.CharField(
+        source="money_receipt.number",
+        read_only=True,
+    )
+    journal_entry = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = SalePayment
+        fields = [
+            "id", "number", "payment_date", "payment_account",
+            "payment_account_name", "amount", "notes", "journal_entry",
+            "money_receipt_number", "created_at",
+        ]
+        read_only_fields = fields
+
+
+class PaymentAllocationInputSerializer(serializers.Serializer):
+    payment_account = serializers.PrimaryKeyRelatedField(
+        queryset=Account.objects.none()
+    )
+    amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+    )
+    payment_date = serializers.DateField(default=timezone.localdate)
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    idempotency_key = serializers.UUIDField(default=uuid.uuid4)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        business = self.context.get("business")
+        if business:
+            self.fields["payment_account"].queryset = Account.objects.filter(
+                business=business,
+                is_active=True,
+                system_role__in=[
+                    Account.SystemRole.CASH,
+                    Account.SystemRole.BANK,
+                    Account.SystemRole.MOBILE_MONEY,
+                ],
+            )
+
+    def validate_payment_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError("Payment date cannot be in the future.")
+        return value
+
+
+class PurchasePaymentSerializer(serializers.ModelSerializer):
+    payment_account_name = serializers.CharField(
+        source="payment_account.name",
+        read_only=True,
+    )
+    voucher_number = serializers.CharField(source="voucher.number", read_only=True)
+    journal_entry = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = PurchasePayment
+        fields = [
+            "id", "number", "payment_date", "payment_account",
+            "payment_account_name", "amount", "notes", "journal_entry",
+            "voucher_number", "created_at",
+        ]
+        read_only_fields = fields
+
+
 class TradeDocumentSerializer(serializers.ModelSerializer):
     lines = TradeLineSerializer(many=True)
     kind = serializers.CharField(read_only=True)
     party_name = serializers.CharField(source="party.name", read_only=True)
     journal_entry = serializers.PrimaryKeyRelatedField(read_only=True)
     money_receipt_number = serializers.SerializerMethodField()
+    payments = SalePaymentSerializer(many=True, read_only=True)
+    supplier_payments = PurchasePaymentSerializer(many=True, read_only=True)
+    paid_amount = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    balance_due = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    payment_status = serializers.CharField(read_only=True)
 
     class Meta:
         model = TradeDocument
@@ -172,14 +262,20 @@ class BaseTradeDocumentViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
             business=self.business, kind=self.kind
         ).select_related(
             "party", "period", "journal_entry__voucher__money_receipt"
-        ).prefetch_related("lines__product")
+        ).prefetch_related(
+            "lines__product",
+            "payments__payment_account",
+            "payments__money_receipt",
+            "supplier_payments__payment_account",
+            "supplier_payments__voucher",
+        )
         state = self.request.query_params.get("state")
         if state in TradeDocument.Status.values:
             queryset = queryset.filter(status=state)
         return queryset
 
     def permission_for_request(self, request):
-        if getattr(self, "action", None) == "post":
+        if getattr(self, "action", None) in {"post", "receive_payment", "pay_supplier"}:
             return self.post_permission
         return super().permission_for_request(request)
 
@@ -209,9 +305,72 @@ class SaleViewSet(BaseTradeDocumentViewSet):
     manage_permission = SALES_MANAGE
     post_permission = SALES_POST
 
+    @action(detail=True, methods=["post"], url_path="receive-payment")
+    def receive_payment(self, request, pk=None):
+        sale = self.get_object()
+        serializer = PaymentAllocationInputSerializer(
+            data=request.data,
+            context={**self.get_serializer_context(), "business": self.business},
+        )
+        serializer.is_valid(raise_exception=True)
+        values = serializer.validated_data
+        try:
+            payment = receive_sale_payment(
+                ReceiveSalePaymentCommand(
+                    sale_id=sale.pk,
+                    business_id=self.business.pk,
+                    payment_account_id=values["payment_account"].pk,
+                    amount=values["amount"],
+                    payment_date=values["payment_date"],
+                    idempotency_key=values["idempotency_key"],
+                    notes=values["notes"],
+                    user_id=request.user.pk,
+                ),
+                DjangoSalePaymentRepository(),
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                validation_detail(exc),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(SalePaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
+
 
 class PurchaseViewSet(BaseTradeDocumentViewSet):
     kind = TradeDocument.Kind.PURCHASE
     view_permission = PURCHASES_VIEW
     manage_permission = PURCHASES_MANAGE
     post_permission = PURCHASES_POST
+
+    @action(detail=True, methods=["post"], url_path="pay-supplier")
+    def pay_supplier(self, request, pk=None):
+        purchase = self.get_object()
+        serializer = PaymentAllocationInputSerializer(
+            data=request.data,
+            context={**self.get_serializer_context(), "business": self.business},
+        )
+        serializer.is_valid(raise_exception=True)
+        values = serializer.validated_data
+        try:
+            payment = pay_purchase(
+                PayPurchaseCommand(
+                    purchase_id=purchase.pk,
+                    business_id=self.business.pk,
+                    payment_account_id=values["payment_account"].pk,
+                    amount=values["amount"],
+                    payment_date=values["payment_date"],
+                    idempotency_key=values["idempotency_key"],
+                    notes=values["notes"],
+                    user_id=request.user.pk,
+                ),
+                DjangoPurchasePaymentRepository(),
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                validation_detail(exc),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            PurchasePaymentSerializer(payment).data,
+            status=status.HTTP_201_CREATED,
+        )

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Receive payment · {{ sale.number }} | Prime Ledger{% endblock %}
+{% block content %}
+<header class="page-heading compact">
+  <div>
+    <div class="breadcrumb"><a href="{% url 'payment-center' %}">Payments</a><span>/</span><a href="{% url 'sale-detail' sale.pk %}">{{ sale.number }}</a><span>/</span><span>Receive payment</span></div>
+    <h1>Receive customer payment</h1>
+    <p class="lede">Allocate a payment from {{ sale.party.name }} directly to this invoice.</p>
+  </div>
+</header>
+
+<section class="payment-workspace">
+  <form method="post" class="panel receive-payment-form">
+    {% csrf_token %}
+    {{ form.idempotency_key }}
+    <div class="panel-heading">
+      <div><span class="overline">Payment details</span><h2>Record funds received</h2></div>
+      <span class="status-badge attention">Posts immediately</span>
+    </div>
+    {% if form.non_field_errors %}<div class="alert error">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="payment-form-grid">
+      <div class="field"><label for="{{ form.payment_date.id_for_label }}">Payment date</label>{{ form.payment_date }}{{ form.payment_date.errors }}</div>
+      <div class="field"><label for="{{ form.payment_account.id_for_label }}">Deposit account</label>{{ form.payment_account }}<small>{{ form.payment_account.help_text }}</small>{{ form.payment_account.errors }}</div>
+      <div class="field"><label for="{{ form.amount.id_for_label }}">Amount received ({{ business.currency }})</label>{{ form.amount }}<small>{{ form.amount.help_text }}</small>{{ form.amount.errors }}</div>
+      <div class="field form-wide"><label for="{{ form.notes.id_for_label }}">Reference or note</label>{{ form.notes }}<small>Optional bank reference, mobile transaction ID, or collection note.</small>{{ form.notes.errors }}</div>
+    </div>
+    <label class="payment-confirmation">{{ form.confirm }}<span>{{ form.confirm.label }}</span></label>
+    {{ form.confirm.errors }}
+    <div class="payment-form-actions"><a class="button secondary" href="{% url 'sale-detail' sale.pk %}">Cancel</a><button class="button primary" type="submit">Receive and post payment</button></div>
+  </form>
+
+  <aside class="panel payment-allocation-summary">
+    <span class="overline">Invoice allocation</span>
+    <h2>{{ sale.number }}</h2>
+    <p>{{ sale.party.name }} · {{ sale.document_date|date:"d M Y" }}</p>
+    <dl>
+      <div><dt>Invoice total</dt><dd>{{ sale.total|floatformat:2 }}</dd></div>
+      <div><dt>Previously paid</dt><dd>{{ paid_amount|floatformat:2 }}</dd></div>
+      <div class="balance"><dt>Balance due</dt><dd>{{ balance_due|floatformat:2 }} <small>{{ business.currency }}</small></dd></div>
+    </dl>
+    <div class="payment-posting-note"><strong>Automatic posting</strong><span>Debit the selected funds account</span><span>Credit Accounts Receivable</span><span>Create receipt voucher and money receipt</span></div>
+  </aside>
+</section>
+{% endblock %}

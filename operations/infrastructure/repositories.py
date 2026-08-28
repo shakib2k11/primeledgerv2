@@ -4,6 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from accounting.application.services import (
@@ -11,10 +12,17 @@ from accounting.application.services import (
     create_money_receipt,
 )
 from accounting.infrastructure.repositories import DjangoMoneyReceiptRepository
-from accounting.models import Account, FiscalPeriod, JournalEntry, JournalLine, Voucher
+from accounting.models import (
+    Account,
+    FiscalPeriod,
+    JournalEntry,
+    JournalLine,
+    MoneyReceipt,
+    Voucher,
+)
 from core.models import Product, StockMovement
 from core.infrastructure.numbering import allocate_reference_number
-from operations.models import TradeDocument
+from operations.models import PurchasePayment, SalePayment, TradeDocument
 
 
 class DjangoTradeDocumentRepository:
@@ -209,3 +217,389 @@ class DjangoTradeDocumentRepository:
         document.journal_entry = journal
         document.posted_at = timezone.now()
         return document
+
+
+class DjangoSalePaymentRepository:
+    @staticmethod
+    def _validate_idempotent(existing, *, sale_id, payment_account_id, amount, payment_date):
+        if (
+            existing.sale_id != sale_id
+            or existing.payment_account_id != payment_account_id
+            or existing.amount != amount
+            or existing.payment_date != payment_date
+        ):
+            raise ValidationError(
+                "This payment request key was already used with different details."
+            )
+        return existing
+
+    @transaction.atomic
+    def receive(
+        self,
+        *,
+        sale_id: int,
+        business_id: int,
+        payment_account_id: int,
+        amount,
+        payment_date,
+        idempotency_key,
+        notes: str = "",
+        user_id: int | None = None,
+    ):
+        amount = Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        existing = SalePayment.objects.filter(
+            business_id=business_id,
+            idempotency_key=idempotency_key,
+        ).first()
+        if existing:
+            return self._validate_idempotent(
+                existing,
+                sale_id=sale_id,
+                payment_account_id=payment_account_id,
+                amount=amount,
+                payment_date=payment_date,
+            )
+
+        sale = (
+            TradeDocument.objects.select_for_update()
+            .select_related("business", "party", "debit_account")
+            .filter(
+                pk=sale_id,
+                business_id=business_id,
+                kind=TradeDocument.Kind.SALE,
+            )
+            .first()
+        )
+        if sale is None:
+            raise TradeDocument.DoesNotExist
+
+        existing = SalePayment.objects.filter(
+            business_id=business_id,
+            idempotency_key=idempotency_key,
+        ).first()
+        if existing:
+            return self._validate_idempotent(
+                existing,
+                sale_id=sale_id,
+                payment_account_id=payment_account_id,
+                amount=amount,
+                payment_date=payment_date,
+            )
+        if sale.status != TradeDocument.Status.POSTED:
+            raise ValidationError("Payment can be received only against a posted sale.")
+        if (
+            sale.debit_account.system_role
+            != Account.SystemRole.ACCOUNTS_RECEIVABLE
+        ):
+            raise ValidationError(
+                "This sale was not posted to Accounts Receivable and cannot receive an allocated payment."
+            )
+
+        payment_account = Account.objects.select_for_update().filter(
+            pk=payment_account_id,
+            business_id=business_id,
+            is_active=True,
+            system_role__in=[
+                Account.SystemRole.CASH,
+                Account.SystemRole.BANK,
+                Account.SystemRole.MOBILE_MONEY,
+            ],
+        ).first()
+        if payment_account is None:
+            raise ValidationError(
+                "Select an active account mapped as Cash, Bank, or Mobile Financial Services."
+            )
+
+        period = FiscalPeriod.objects.select_for_update().filter(
+            business_id=business_id,
+            starts_on__lte=payment_date,
+            ends_on__gte=payment_date,
+        ).first()
+        if period is None:
+            raise ValidationError("No fiscal period covers the payment date.")
+        if period.is_locked:
+            raise ValidationError("The fiscal period covering the payment date is locked.")
+
+        paid = SalePayment.objects.filter(sale=sale).aggregate(total=Sum("amount"))[
+            "total"
+        ] or Decimal("0.00")
+        remaining = (sale.total - paid).quantize(Decimal("0.01"))
+        if amount <= 0:
+            raise ValidationError("Payment amount must be greater than zero.")
+        if remaining <= 0:
+            raise ValidationError("This invoice is already paid in full.")
+        if amount > remaining:
+            raise ValidationError(
+                f"Payment cannot exceed the remaining balance of {remaining:.2f}."
+            )
+
+        number = allocate_reference_number(
+            business_id=business_id,
+            occurred_on=payment_date,
+        )
+        journal = JournalEntry.objects.create(
+            business=sale.business,
+            period=period,
+            reference=f"RECEIPT:{number}",
+            description=f"Payment for sale {sale.number} — {sale.party.name}",
+            entry_date=payment_date,
+            created_by_id=user_id,
+        )
+        JournalLine.objects.create(
+            entry=journal,
+            account=payment_account,
+            party=sale.party,
+            description=f"Payment received for {sale.number}",
+            debit=amount,
+        )
+        JournalLine.objects.create(
+            entry=journal,
+            account=sale.debit_account,
+            party=sale.party,
+            description=f"Receivable settled for {sale.number}",
+            credit=amount,
+        )
+        journal.validate_for_posting()
+        JournalEntry.objects.filter(pk=journal.pk).update(posted=True)
+        journal.posted = True
+
+        voucher_base = f"R-{number}"
+        voucher_number = voucher_base
+        suffix = 2
+        while Voucher.objects.filter(
+            business_id=business_id,
+            number=voucher_number,
+        ).exists():
+            marker = f"-{suffix}"
+            voucher_number = f"{voucher_base[:40 - len(marker)]}{marker}"
+            suffix += 1
+        voucher = Voucher(
+            business=sale.business,
+            voucher_type=Voucher.Type.RECEIPT,
+            number=voucher_number,
+            party=sale.party,
+            journal_entry=journal,
+            total=amount,
+            notes=notes,
+            voucher_date=payment_date,
+        )
+        voucher.full_clean()
+        voucher.save()
+        receipt_result = create_money_receipt(
+            CreateMoneyReceiptCommand(
+                voucher_id=voucher.pk,
+                preferred_number=f"MR-{number}",
+                payment_account_id=payment_account.pk,
+            ),
+            DjangoMoneyReceiptRepository(),
+        )
+        if receipt_result is None:
+            raise ValidationError("The money receipt could not be generated.")
+        receipt = MoneyReceipt.objects.get(pk=receipt_result.receipt_id)
+        payment = SalePayment(
+            business=sale.business,
+            sale=sale,
+            number=number,
+            payment_account=payment_account,
+            amount=amount,
+            payment_date=payment_date,
+            journal_entry=journal,
+            money_receipt=receipt,
+            notes=notes,
+            idempotency_key=idempotency_key,
+            received_by_id=user_id,
+        )
+        payment.full_clean()
+        payment.save()
+        return payment
+
+
+class DjangoPurchasePaymentRepository:
+    @staticmethod
+    def _validate_idempotent(
+        existing,
+        *,
+        purchase_id,
+        payment_account_id,
+        amount,
+        payment_date,
+    ):
+        if (
+            existing.purchase_id != purchase_id
+            or existing.payment_account_id != payment_account_id
+            or existing.amount != amount
+            or existing.payment_date != payment_date
+        ):
+            raise ValidationError(
+                "This payment request key was already used with different details."
+            )
+        return existing
+
+    @transaction.atomic
+    def pay(
+        self,
+        *,
+        purchase_id: int,
+        business_id: int,
+        payment_account_id: int,
+        amount,
+        payment_date,
+        idempotency_key,
+        notes: str = "",
+        user_id: int | None = None,
+    ):
+        amount = Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        existing = PurchasePayment.objects.filter(
+            business_id=business_id,
+            idempotency_key=idempotency_key,
+        ).first()
+        if existing:
+            return self._validate_idempotent(
+                existing,
+                purchase_id=purchase_id,
+                payment_account_id=payment_account_id,
+                amount=amount,
+                payment_date=payment_date,
+            )
+
+        purchase = (
+            TradeDocument.objects.select_for_update()
+            .select_related("business", "party", "credit_account")
+            .filter(
+                pk=purchase_id,
+                business_id=business_id,
+                kind=TradeDocument.Kind.PURCHASE,
+            )
+            .first()
+        )
+        if purchase is None:
+            raise TradeDocument.DoesNotExist
+
+        existing = PurchasePayment.objects.filter(
+            business_id=business_id,
+            idempotency_key=idempotency_key,
+        ).first()
+        if existing:
+            return self._validate_idempotent(
+                existing,
+                purchase_id=purchase_id,
+                payment_account_id=payment_account_id,
+                amount=amount,
+                payment_date=payment_date,
+            )
+        if purchase.status != TradeDocument.Status.POSTED:
+            raise ValidationError("Payment can be made only against a posted purchase.")
+        if (
+            purchase.credit_account.system_role
+            != Account.SystemRole.ACCOUNTS_PAYABLE
+        ):
+            raise ValidationError(
+                "This purchase was not posted to Accounts Payable and cannot receive an allocated payment."
+            )
+
+        payment_account = Account.objects.select_for_update().filter(
+            pk=payment_account_id,
+            business_id=business_id,
+            is_active=True,
+            system_role__in=[
+                Account.SystemRole.CASH,
+                Account.SystemRole.BANK,
+                Account.SystemRole.MOBILE_MONEY,
+            ],
+        ).first()
+        if payment_account is None:
+            raise ValidationError(
+                "Select an active account mapped as Cash, Bank, or Mobile Financial Services."
+            )
+
+        period = FiscalPeriod.objects.select_for_update().filter(
+            business_id=business_id,
+            starts_on__lte=payment_date,
+            ends_on__gte=payment_date,
+        ).first()
+        if period is None:
+            raise ValidationError("No fiscal period covers the payment date.")
+        if period.is_locked:
+            raise ValidationError("The fiscal period covering the payment date is locked.")
+
+        paid = PurchasePayment.objects.filter(purchase=purchase).aggregate(
+            total=Sum("amount")
+        )["total"] or Decimal("0.00")
+        remaining = (purchase.total - paid).quantize(Decimal("0.01"))
+        if amount <= 0:
+            raise ValidationError("Payment amount must be greater than zero.")
+        if remaining <= 0:
+            raise ValidationError("This supplier invoice is already paid in full.")
+        if amount > remaining:
+            raise ValidationError(
+                f"Payment cannot exceed the remaining balance of {remaining:.2f}."
+            )
+
+        number = allocate_reference_number(
+            business_id=business_id,
+            occurred_on=payment_date,
+        )
+        journal = JournalEntry.objects.create(
+            business=purchase.business,
+            period=period,
+            reference=f"PAYMENT:{number}",
+            description=f"Payment for purchase {purchase.number} — {purchase.party.name}",
+            entry_date=payment_date,
+            created_by_id=user_id,
+        )
+        JournalLine.objects.create(
+            entry=journal,
+            account=purchase.credit_account,
+            party=purchase.party,
+            description=f"Payable settled for {purchase.number}",
+            debit=amount,
+        )
+        JournalLine.objects.create(
+            entry=journal,
+            account=payment_account,
+            party=purchase.party,
+            description=f"Supplier payment for {purchase.number}",
+            credit=amount,
+        )
+        journal.validate_for_posting()
+        JournalEntry.objects.filter(pk=journal.pk).update(posted=True)
+        journal.posted = True
+
+        voucher_base = f"P-{number}"
+        voucher_number = voucher_base
+        suffix = 2
+        while Voucher.objects.filter(
+            business_id=business_id,
+            number=voucher_number,
+        ).exists():
+            marker = f"-{suffix}"
+            voucher_number = f"{voucher_base[:40 - len(marker)]}{marker}"
+            suffix += 1
+        voucher = Voucher(
+            business=purchase.business,
+            voucher_type=Voucher.Type.PAYMENT,
+            number=voucher_number,
+            party=purchase.party,
+            journal_entry=journal,
+            total=amount,
+            notes=notes,
+            voucher_date=payment_date,
+        )
+        voucher.full_clean()
+        voucher.save()
+        payment = PurchasePayment(
+            business=purchase.business,
+            purchase=purchase,
+            number=number,
+            payment_account=payment_account,
+            amount=amount,
+            payment_date=payment_date,
+            journal_entry=journal,
+            voucher=voucher,
+            notes=notes,
+            idempotency_key=idempotency_key,
+            paid_by_id=user_id,
+        )
+        payment.full_clean()
+        payment.save()
+        return payment

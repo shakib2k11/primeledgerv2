@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -12,8 +13,12 @@ from accounting.models import Account, FiscalPeriod, JournalEntry, MoneyReceipt,
 from core.application.services import SALES_VIEW
 from core.infrastructure.numbering import allocate_reference_number
 from core.models import Business, InventoryUnit, Membership, Party, Product, Role, StockMovement
-from operations.infrastructure.repositories import DjangoTradeDocumentRepository
-from operations.models import TradeDocument, TradeLine
+from operations.infrastructure.repositories import (
+    DjangoPurchasePaymentRepository,
+    DjangoSalePaymentRepository,
+    DjangoTradeDocumentRepository,
+)
+from operations.models import PurchasePayment, SalePayment, TradeDocument, TradeLine
 
 
 class TradeWorkflowTests(TestCase):
@@ -368,6 +373,334 @@ class TradeWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["money_receipt_number"], receipt_number)
 
+    def test_credit_sale_receives_partial_and_final_payment_with_receipts(self):
+        document = self.make_document()
+        DjangoTradeDocumentRepository().post(
+            document_id=document.pk,
+            business_id=self.business.pk,
+        )
+
+        form_page = self.client.get(reverse("sale-receive-payment", args=[document.pk]))
+        self.assertEqual(form_page.status_code, 200)
+        self.assertContains(form_page, "Receive customer payment")
+        self.assertContains(form_page, "Outstanding balance: 240.00 BDT")
+
+        response = self.client.post(
+            reverse("sale-receive-payment", args=[document.pk]),
+            {
+                "payment_date": "2026-08-27",
+                "payment_account": self.cash.pk,
+                "amount": "100.00",
+                "notes": "Cash counter",
+                "idempotency_key": str(uuid.uuid4()),
+                "confirm": "on",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        payment = SalePayment.objects.get(sale=document)
+        self.assertEqual(payment.amount, Decimal("100.00"))
+        self.assertEqual(payment.payment_account, self.cash)
+        self.assertEqual(payment.money_receipt.amount, Decimal("100.00"))
+        self.assertEqual(payment.journal_entry.voucher.voucher_type, Voucher.Type.RECEIPT)
+        self.assertTrue(payment.journal_entry.posted)
+        self.assertTrue(payment.journal_entry.lines.filter(
+            account=self.cash,
+            party=self.customer,
+            debit=Decimal("100.00"),
+        ).exists())
+        self.assertTrue(payment.journal_entry.lines.filter(
+            account=self.receivable,
+            party=self.customer,
+            credit=Decimal("100.00"),
+        ).exists())
+        payment.notes = "Changed"
+        with self.assertRaises(ValidationError):
+            payment.save()
+        self.assertContains(response, "Partially paid")
+        self.assertContains(response, "140.00")
+        self.assertContains(response, "Receipt PDF")
+        invoice_report = self.client.get(reverse("invoice-report"))
+        self.assertContains(invoice_report, "Partially paid")
+        self.assertContains(invoice_report, "140.00")
+        receipt_report = self.client.get(reverse("money-receipt-report"))
+        self.assertContains(receipt_report, f"Invoice {document.number}")
+
+        api = APIClient()
+        api.force_authenticate(self.user)
+        other_business = Business.objects.create(
+            name="Foreign Payment House",
+            slug="foreign-payment-house",
+        )
+        foreign_cash = Account.objects.create(
+            business=other_business,
+            code="1010",
+            name="Foreign cash",
+            account_type=Account.Type.ASSET,
+            system_role=Account.SystemRole.CASH,
+        )
+        rejected = api.post(
+            f"/api/v1/sales/{document.pk}/receive-payment/",
+            {
+                "payment_date": "2026-08-28",
+                "payment_account": foreign_cash.pk,
+                "amount": "10.00",
+            },
+            format="json",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(rejected.status_code, 400)
+        self.assertEqual(SalePayment.objects.filter(sale=document).count(), 1)
+        api_response = api.post(
+            f"/api/v1/sales/{document.pk}/receive-payment/",
+            {
+                "payment_date": "2026-08-28",
+                "payment_account": self.cash.pk,
+                "amount": "140.00",
+                "notes": "Final settlement",
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            format="json",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(api_response.status_code, 201, api_response.data)
+        self.assertEqual(api_response.data["amount"], "140.00")
+        self.assertTrue(api_response.data["money_receipt_number"].startswith("MR-"))
+
+        detail = api.get(
+            f"/api/v1/sales/{document.pk}/",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(detail.data["payment_status"], TradeDocument.PaymentStatus.PAID)
+        self.assertEqual(detail.data["paid_amount"], "240.00")
+        self.assertEqual(detail.data["balance_due"], "0.00")
+        self.assertEqual(len(detail.data["payments"]), 2)
+        self.assertRedirects(
+            self.client.get(reverse("sale-receive-payment", args=[document.pk])),
+            reverse("sale-detail", args=[document.pk]),
+        )
+        invoice_pdf = self.client.get(reverse("sale-document-pdf", args=[document.pk]))
+        self.assertTrue(invoice_pdf.content.startswith(b"%PDF"))
+
+    def test_payment_is_idempotent_and_overpayment_or_locked_period_rolls_back(self):
+        document = self.make_document()
+        DjangoTradeDocumentRepository().post(
+            document_id=document.pk,
+            business_id=self.business.pk,
+        )
+        repository = DjangoSalePaymentRepository()
+        key = uuid.uuid4()
+        command = {
+            "sale_id": document.pk,
+            "business_id": self.business.pk,
+            "payment_account_id": self.cash.pk,
+            "amount": Decimal("100.00"),
+            "payment_date": date(2026, 8, 27),
+            "idempotency_key": key,
+            "notes": "Deposit",
+            "user_id": self.user.pk,
+        }
+        first = repository.receive(**command)
+        second = repository.receive(**command)
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(SalePayment.objects.filter(sale=document).count(), 1)
+
+        side_effect_counts = (
+            JournalEntry.objects.count(),
+            Voucher.objects.count(),
+            MoneyReceipt.objects.count(),
+            SalePayment.objects.count(),
+        )
+        with self.assertRaisesMessage(ValidationError, "cannot exceed"):
+            repository.receive(
+                **{
+                    **command,
+                    "amount": Decimal("141.00"),
+                    "idempotency_key": uuid.uuid4(),
+                }
+            )
+        self.assertEqual(side_effect_counts, (
+            JournalEntry.objects.count(),
+            Voucher.objects.count(),
+            MoneyReceipt.objects.count(),
+            SalePayment.objects.count(),
+        ))
+
+        self.period.is_locked = True
+        self.period.save(update_fields=["is_locked"])
+        with self.assertRaisesMessage(ValidationError, "locked"):
+            repository.receive(
+                **{
+                    **command,
+                    "amount": Decimal("10.00"),
+                    "idempotency_key": uuid.uuid4(),
+                }
+            )
+        self.assertEqual(SalePayment.objects.filter(sale=document).count(), 1)
+
+    def test_purchase_payable_supports_partial_and_final_supplier_payments(self):
+        purchase = self.make_document(kind=TradeDocument.Kind.PURCHASE)
+        DjangoTradeDocumentRepository().post(
+            document_id=purchase.pk,
+            business_id=self.business.pk,
+        )
+        purchase.refresh_from_db()
+
+        center = self.client.get(reverse("payment-center"))
+        self.assertContains(center, "Open supplier payables")
+        self.assertContains(center, purchase.number)
+        self.assertContains(center, "Pay")
+        detail = self.client.get(reverse("purchase-detail", args=[purchase.pk]))
+        self.assertContains(detail, "Pay supplier")
+        form_page = self.client.get(reverse("purchase-pay-supplier", args=[purchase.pk]))
+        self.assertContains(form_page, "Record funds paid")
+
+        response = self.client.post(
+            reverse("purchase-pay-supplier", args=[purchase.pk]),
+            {
+                "payment_date": "2026-08-27",
+                "payment_account": self.cash.pk,
+                "amount": "60.00",
+                "notes": "Cheque 1001",
+                "idempotency_key": uuid.uuid4(),
+                "confirm": "on",
+            },
+        )
+        self.assertRedirects(response, reverse("purchase-detail", args=[purchase.pk]))
+        payment = PurchasePayment.objects.get(purchase=purchase)
+        self.assertEqual(payment.amount, Decimal("60.00"))
+        self.assertEqual(payment.voucher.voucher_type, Voucher.Type.PAYMENT)
+        self.assertEqual(payment.voucher.party, self.supplier)
+        self.assertTrue(payment.journal_entry.posted)
+        self.assertTrue(payment.journal_entry.lines.filter(
+            account=self.payable,
+            debit=Decimal("60.00"),
+            credit=Decimal("0.00"),
+        ).exists())
+        self.assertTrue(payment.journal_entry.lines.filter(
+            account=self.cash,
+            debit=Decimal("0.00"),
+            credit=Decimal("60.00"),
+        ).exists())
+        voucher_pdf = self.client.get(
+            reverse("purchase-payment-document-pdf", args=[payment.pk])
+        )
+        self.assertEqual(voucher_pdf.status_code, 200)
+        self.assertTrue(voucher_pdf.content.startswith(b"%PDF"))
+        payment.notes = "Changed"
+        with self.assertRaises(ValidationError):
+            payment.save()
+
+        purchase.refresh_from_db()
+        self.assertEqual(purchase.paid_amount, Decimal("60.00"))
+        self.assertEqual(purchase.balance_due, Decimal("100.00"))
+        self.assertEqual(purchase.payment_status, TradeDocument.PaymentStatus.PARTIAL)
+        self.assertContains(
+            self.client.get(reverse("purchase-detail", args=[purchase.pk])),
+            "Partially paid",
+        )
+
+        foreign = Business.objects.create(
+            name="Foreign Supplier House",
+            slug="foreign-supplier-house",
+        )
+        foreign_cash = Account.objects.create(
+            business=foreign,
+            code="1010",
+            name="Foreign Cash",
+            account_type=Account.Type.ASSET,
+            system_role=Account.SystemRole.CASH,
+        )
+        rejected = self.client.post(
+            f"/api/v1/purchases/{purchase.pk}/pay-supplier/",
+            {
+                "payment_date": "2026-08-28",
+                "payment_account": foreign_cash.pk,
+                "amount": "100.00",
+            },
+            content_type="application/json",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(rejected.status_code, 400)
+
+        paid = self.client.post(
+            f"/api/v1/purchases/{purchase.pk}/pay-supplier/",
+            {
+                "payment_date": "2026-08-28",
+                "payment_account": self.cash.pk,
+                "amount": "100.00",
+            },
+            content_type="application/json",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(paid.status_code, 201, paid.data)
+        self.assertTrue(paid.data["voucher_number"].startswith("P-"))
+        purchase.refresh_from_db()
+        self.assertEqual(purchase.payment_status, TradeDocument.PaymentStatus.PAID)
+        api_detail = self.client.get(
+            f"/api/v1/purchases/{purchase.pk}/",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(api_detail.data["paid_amount"], "160.00")
+        self.assertEqual(api_detail.data["balance_due"], "0.00")
+        self.assertEqual(len(api_detail.data["supplier_payments"]), 2)
+        self.assertRedirects(
+            self.client.get(reverse("purchase-pay-supplier", args=[purchase.pk])),
+            reverse("purchase-detail", args=[purchase.pk]),
+        )
+
+    def test_supplier_payment_is_idempotent_and_rolls_back_invalid_attempts(self):
+        purchase = self.make_document(kind=TradeDocument.Kind.PURCHASE)
+        DjangoTradeDocumentRepository().post(
+            document_id=purchase.pk,
+            business_id=self.business.pk,
+        )
+        key = uuid.uuid4()
+        repository = DjangoPurchasePaymentRepository()
+        values = {
+            "purchase_id": purchase.pk,
+            "business_id": self.business.pk,
+            "payment_account_id": self.cash.pk,
+            "amount": Decimal("40.00"),
+            "payment_date": date(2026, 8, 27),
+            "idempotency_key": key,
+            "user_id": self.user.pk,
+        }
+        first = repository.pay(**values)
+        repeated = repository.pay(**values)
+        self.assertEqual(first.pk, repeated.pk)
+        self.assertEqual(PurchasePayment.objects.filter(purchase=purchase).count(), 1)
+
+        counts = (
+            PurchasePayment.objects.count(),
+            JournalEntry.objects.count(),
+            Voucher.objects.count(),
+        )
+        with self.assertRaisesMessage(ValidationError, "cannot exceed"):
+            repository.pay(**{
+                **values,
+                "amount": Decimal("121.00"),
+                "idempotency_key": uuid.uuid4(),
+            })
+        self.assertEqual(
+            counts,
+            (
+                PurchasePayment.objects.count(),
+                JournalEntry.objects.count(),
+                Voucher.objects.count(),
+            ),
+        )
+
+        self.period.is_locked = True
+        self.period.save(update_fields=["is_locked"])
+        with self.assertRaisesMessage(ValidationError, "locked"):
+            repository.pay(**{
+                **values,
+                "amount": Decimal("10.00"),
+                "idempotency_key": uuid.uuid4(),
+            })
+        self.assertEqual(PurchasePayment.objects.filter(purchase=purchase).count(), 1)
+
     def test_ui_create_post_and_exports(self):
         response = self.client.post(
             reverse("sale-create"),
@@ -572,3 +905,31 @@ class TradeTenantApiTests(TestCase):
             "/api/v1/sales/", {}, format="json", HTTP_X_BUSINESS_ID=self.business.pk
         )
         self.assertEqual(response.status_code, 403)
+        response = self.api.post(
+            "/api/v1/purchases/999/pay-supplier/",
+            {},
+            format="json",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(response.status_code, 403)
+        response = self.api.post(
+            "/api/v1/sales/999/receive-payment/",
+            {},
+            format="json",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_payment_center_respects_independent_sales_and_purchase_permissions(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("payment-center"), {"business": self.business.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Open customer receivables")
+        self.assertNotContains(response, "Open supplier payables")
+        self.assertEqual(
+            self.client.get(
+                reverse("purchase-pay-supplier", args=[999]),
+                {"business": self.business.pk},
+            ).status_code,
+            403,
+        )

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from operations.models import TradeDocument, TradeLine
+from operations.models import PurchasePayment, SalePayment, TradeDocument, TradeLine
 
 
 class TradeLineInline(admin.TabularInline):
@@ -30,4 +30,47 @@ class TradeLineAdmin(admin.ModelAdmin):
         return bool(obj and obj.document.status == TradeDocument.Status.DRAFT)
 
     def has_add_permission(self, request):
+        return False
+
+
+@admin.register(SalePayment)
+class SalePaymentAdmin(admin.ModelAdmin):
+    list_display = (
+        "number", "sale", "business", "payment_date", "payment_account", "amount"
+    )
+    list_filter = ("business", "payment_date", "payment_account")
+    readonly_fields = (
+        "business", "sale", "number", "payment_account", "amount", "payment_date",
+        "journal_entry", "money_receipt", "notes", "idempotency_key", "received_by",
+        "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PurchasePayment)
+class PurchasePaymentAdmin(admin.ModelAdmin):
+    list_display = (
+        "number", "purchase", "business", "payment_date", "payment_account", "amount"
+    )
+    list_filter = ("business", "payment_date", "payment_account")
+    readonly_fields = (
+        "business", "purchase", "number", "payment_account", "amount", "payment_date",
+        "journal_entry", "voucher", "notes", "idempotency_key", "paid_by", "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False

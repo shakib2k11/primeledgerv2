@@ -1,5 +1,6 @@
 import csv
 from datetime import date
+from decimal import Decimal
 from io import BytesIO
 
 from django.contrib.auth.decorators import login_required
@@ -12,11 +13,13 @@ from django.utils import timezone
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
 
-from accounting.models import MoneyReceipt, Voucher
+from accounting.application.reporting import build_account_activity
+from accounting.models import Account, JournalLine, MoneyReceipt, Voucher
 from core.application.services import ACCOUNTING_VIEW, CONTACTS_VIEW, SALES_VIEW
 from core.models import Party
 from core.pdf import (
     BORDER,
+    BORDER_STRONG,
     INK,
     INK_SOFT,
     MUTED,
@@ -34,7 +37,7 @@ from core.pdf import (
     draw_table_row_background,
 )
 from core.views import authorize, is_authorized, request_business
-from operations.models import TradeDocument
+from operations.models import SalePayment, TradeDocument
 
 
 def _report_business(request, permission):
@@ -133,7 +136,7 @@ def _invoice_filters(request, business):
         business=business,
         kind=TradeDocument.Kind.SALE,
         status=TradeDocument.Status.POSTED,
-    ).select_related("party", "period")
+    ).select_related("party", "period", "debit_account").prefetch_related("payments")
     if query:
         invoices = invoices.filter(
             Q(number__icontains=query) | Q(party__name__icontains=query)
@@ -154,7 +157,11 @@ def _receipt_filters(request, business):
     date_from, date_to = _date_filters(request)
     receipts = MoneyReceipt.objects.filter(
         business=business,
-    ).select_related("party", "payment_account", "voucher__journal_entry")
+    ).select_related(
+        "party",
+        "payment_account",
+        "voucher__journal_entry__sale_payment__sale",
+    )
     if query:
         receipts = receipts.filter(
             Q(number__icontains=query)
@@ -172,6 +179,56 @@ def _receipt_filters(request, business):
     }
 
 
+def _receipt_source(receipt):
+    if receipt.voucher.voucher_type == Voucher.Type.SALE:
+        return "Immediate sale"
+    try:
+        return f"Invoice payment / {receipt.voucher.journal_entry.sale_payment.sale.number}"
+    except SalePayment.DoesNotExist:
+        return "Receipt voucher"
+
+
+def _account_activity_data(request, business):
+    date_from, date_to = _date_filters(request)
+    if date_from and date_to and date_from > date_to:
+        return [], None, date_from, date_to, "From date cannot be after to date."
+
+    accounts = list(Account.objects.filter(business=business).order_by("code", "pk"))
+    posted_lines = JournalLine.objects.filter(
+        entry__business=business,
+        entry__posted=True,
+    )
+
+    def totals_by_account(queryset):
+        return {
+            item["account_id"]: (
+                item["debit"] or Decimal("0.00"),
+                item["credit"] or Decimal("0.00"),
+            )
+            for item in queryset.values("account_id").annotate(
+                debit=Sum("debit"),
+                credit=Sum("credit"),
+            )
+        }
+
+    opening = (
+        totals_by_account(posted_lines.filter(entry__entry_date__lt=date_from))
+        if date_from
+        else {}
+    )
+    activity = posted_lines
+    if date_from:
+        activity = activity.filter(entry__entry_date__gte=date_from)
+    if date_to:
+        activity = activity.filter(entry__entry_date__lte=date_to)
+    rows, totals = build_account_activity(
+        accounts,
+        opening,
+        totals_by_account(activity),
+    )
+    return rows, totals, date_from, date_to, ""
+
+
 @login_required
 def report_index(request):
     business = request_business(request)
@@ -183,6 +240,201 @@ def report_index(request):
     ):
         raise PermissionDenied
     return render(request, "reports/index.html", {"business": business})
+
+
+@login_required
+def account_activity_report(request):
+    business = _report_business(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    rows, totals, date_from, date_to, date_error = _account_activity_data(
+        request,
+        business,
+    )
+    page = Paginator(rows, 50).get_page(request.GET.get("page"))
+    return render(request, "reports/account-activity-report.html", {
+        "business": business,
+        "rows": page,
+        "page_obj": page,
+        "totals": totals,
+        "date_from": date_from,
+        "date_to": date_to,
+        "date_error": date_error,
+        "date_range": _date_range_label(date_from, date_to),
+    })
+
+
+@login_required
+def account_activity_report_csv(request):
+    business = _report_business(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    rows, totals, date_from, date_to, date_error = _account_activity_data(
+        request,
+        business,
+    )
+    if date_error:
+        return HttpResponse(date_error, status=400, content_type="text/plain")
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="account-activity.csv"'
+    writer = csv.writer(response)
+    _write_csv_heading(
+        writer,
+        business,
+        "Account activity summary",
+        date_range=_date_range_label(date_from, date_to),
+    )
+    writer.writerow([
+        "Account code", "Account name", "Account type", "Status",
+        f"Opening debit ({business.currency})",
+        f"Opening credit ({business.currency})",
+        f"Period debit ({business.currency})",
+        f"Period credit ({business.currency})",
+        f"Closing debit ({business.currency})",
+        f"Closing credit ({business.currency})",
+    ])
+    for row in rows:
+        writer.writerow([
+            row.account.code,
+            row.account.name,
+            row.account.get_account_type_display(),
+            "Active" if row.account.is_active else "Inactive",
+            row.opening_debit,
+            row.opening_credit,
+            row.period_debit,
+            row.period_credit,
+            row.closing_debit,
+            row.closing_credit,
+        ])
+    writer.writerow([])
+    writer.writerow([
+        "TOTAL", "", "", "",
+        totals.opening_debit,
+        totals.opening_credit,
+        totals.period_debit,
+        totals.period_credit,
+        totals.closing_debit,
+        totals.closing_credit,
+    ])
+    return response
+
+
+@login_required
+def account_activity_report_pdf(request):
+    business = _report_business(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    rows, totals, date_from, date_to, date_error = _account_activity_data(
+        request,
+        business,
+    )
+    if date_error:
+        return HttpResponse(date_error, status=400, content_type="text/plain")
+    date_range = _date_range_label(date_from, date_to)
+    page_size = landscape(A4)
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=page_size, pageCompression=1)
+    pdf.setTitle(f"{business.name} account activity summary")
+    pdf.setAuthor("Prime Ledger")
+    page_number = 1
+    width, _, y = _pdf_header(
+        pdf,
+        business,
+        "Account activity summary",
+        date_range=date_range,
+        page_size=page_size,
+        page_number=page_number,
+    )
+
+    def columns(current_y):
+        return draw_table_header(
+            pdf,
+            current_y,
+            (
+                (PAGE_MARGIN, "Account", "left"),
+                (235, "Type", "left"),
+                (385, "Opening Dr", "right"),
+                (465, "Opening Cr", "right"),
+                (545, "Debit", "right"),
+                (625, "Credit", "right"),
+                (705, "Closing Dr", "right"),
+                (795, "Closing Cr", "right"),
+            ),
+            width=width,
+        )
+
+    y = columns(y)
+    if not rows:
+        y = draw_empty_state(pdf, y, "No accounts are configured", width=width)
+    for row_index, row in enumerate(rows):
+        if y < 68:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            _, _, y = _pdf_header(
+                pdf,
+                business,
+                "Account activity summary",
+                date_range=date_range,
+                page_size=page_size,
+                page_number=page_number,
+            )
+            y = columns(y)
+        draw_table_row_background(pdf, y, width=width, row_index=row_index)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.5)
+        pdf.drawString(
+            PAGE_MARGIN,
+            y,
+            clean_text(f"{row.account.code}  {row.account.name}", 39),
+        )
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7.3)
+        pdf.drawString(235, y, row.account.get_account_type_display())
+        pdf.drawRightString(385, y, f"{row.opening_debit:.2f}")
+        pdf.drawRightString(465, y, f"{row.opening_credit:.2f}")
+        pdf.drawRightString(545, y, f"{row.period_debit:.2f}")
+        pdf.drawRightString(625, y, f"{row.period_credit:.2f}")
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.3)
+        pdf.drawRightString(705, y, f"{row.closing_debit:.2f}")
+        pdf.drawRightString(795, y, f"{row.closing_credit:.2f}")
+        y -= 20
+
+    if rows:
+        if y < 76:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            _, _, y = _pdf_header(
+                pdf,
+                business,
+                "Account activity summary",
+                date_range=date_range,
+                page_size=page_size,
+                page_number=page_number,
+            )
+            y = columns(y)
+        pdf.setFillColor(TEAL_SOFT)
+        pdf.rect(PAGE_MARGIN, y - 8, width - (2 * PAGE_MARGIN), 25, stroke=0, fill=1)
+        pdf.setFillColor(TEAL)
+        pdf.setFont("Helvetica-Bold", 7.3)
+        pdf.drawString(PAGE_MARGIN, y, "TOTAL")
+        values = (
+            (385, totals.opening_debit),
+            (465, totals.opening_credit),
+            (545, totals.period_debit),
+            (625, totals.period_credit),
+            (705, totals.closing_debit),
+            (795, totals.closing_credit),
+        )
+        for x, value in values:
+            pdf.drawRightString(x, y, f"{value:.2f}")
+    draw_page_footer(pdf, width=width, page_number=page_number)
+    pdf.save()
+    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="account-activity.pdf"'
+    return response
 
 
 @login_required
@@ -335,12 +587,26 @@ def invoice_report(request):
         return render(request, "core/no-business.html")
     invoices, filters = _invoice_filters(request, business)
     total = invoices.aggregate(total=Sum("total"))["total"] or 0
+    immediate_paid = invoices.filter(
+        debit_account__system_role__in=[
+            Account.SystemRole.CASH,
+            Account.SystemRole.BANK,
+            Account.SystemRole.MOBILE_MONEY,
+        ]
+    ).aggregate(total=Sum("total"))["total"] or 0
+    allocated_paid = SalePayment.objects.filter(
+        business=business,
+        sale__in=invoices,
+    ).aggregate(total=Sum("amount"))["total"] or 0
+    paid_total = immediate_paid + allocated_paid
     page = Paginator(invoices, 40).get_page(request.GET.get("page"))
     return render(request, "reports/invoice-report.html", {
         "business": business,
         "invoices": page,
         "page_obj": page,
         "report_total": total,
+        "paid_total": paid_total,
+        "balance_total": total - paid_total,
         **filters,
     })
 
@@ -359,7 +625,8 @@ def invoice_report_csv(request):
     writer.writerow([
         "Invoice number", "Date", "Customer", "Fiscal period",
         f"Subtotal ({business.currency})", f"Discount ({business.currency})",
-        f"Total ({business.currency})",
+        f"Total ({business.currency})", f"Paid ({business.currency})",
+        f"Balance ({business.currency})", "Payment status",
     ])
     wrote_row = False
     for invoice in invoices:
@@ -372,6 +639,9 @@ def invoice_report_csv(request):
             invoice.subtotal,
             invoice.discount_amount,
             invoice.total,
+            invoice.paid_amount,
+            invoice.balance_due,
+            invoice.get_payment_status_display(),
         ])
     if not wrote_row:
         writer.writerow(["No records for the selected filters."])
@@ -387,7 +657,8 @@ def invoice_report_pdf(request):
     rows = list(invoices)
     date_range = _date_range_label(filters["date_from"], filters["date_to"])
     buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
+    page_size = landscape(A4)
+    pdf = canvas.Canvas(buffer, pagesize=page_size, pageCompression=1)
     pdf.setTitle(f"{business.name} invoice register")
     pdf.setAuthor("Prime Ledger")
     page_number = 1
@@ -396,6 +667,7 @@ def invoice_report_pdf(request):
         business,
         "Invoice register",
         date_range=date_range,
+        page_size=page_size,
         page_number=page_number,
     )
 
@@ -405,11 +677,12 @@ def invoice_report_pdf(request):
             current_y,
             (
                 (PAGE_MARGIN, "Invoice", "left"),
-                (112, "Date", "left"),
-                (185, "Customer", "left"),
-                (430, "Subtotal", "right"),
-                (495, "Discount", "right"),
-                (width - PAGE_MARGIN, f"Net total ({business.currency})", "right"),
+                (120, "Date", "left"),
+                (205, "Customer", "left"),
+                (500, f"Total ({business.currency})", "right"),
+                (590, "Paid", "right"),
+                (680, "Balance", "right"),
+                (710, "Status", "left"),
             ),
             width=width,
         )
@@ -422,7 +695,7 @@ def invoice_report_pdf(request):
             "No posted invoices match the selected filters",
             width=width,
         )
-    total = 0
+    total_balance = 0
     for row_index, invoice in enumerate(rows):
         if y < 72:
             draw_page_footer(pdf, width=width, page_number=page_number)
@@ -433,6 +706,7 @@ def invoice_report_pdf(request):
                 business,
                 "Invoice register",
                 date_range=date_range,
+                page_size=page_size,
                 page_number=page_number,
             )
             y = columns(y)
@@ -442,15 +716,17 @@ def invoice_report_pdf(request):
         pdf.drawString(PAGE_MARGIN, y, invoice.number)
         pdf.setFillColor(INK_SOFT)
         pdf.setFont("Helvetica", 7.5)
-        pdf.drawString(112, y, invoice.document_date.strftime("%d %b %Y"))
-        pdf.drawString(185, y, clean_text(invoice.party.name, 28))
-        pdf.drawRightString(430, y, f"{invoice.subtotal:.2f}")
-        pdf.setFillColor(MUTED)
-        pdf.drawRightString(495, y, f"{invoice.discount_amount:.2f}")
+        pdf.drawString(120, y, invoice.document_date.strftime("%d %b %Y"))
+        pdf.drawString(205, y, clean_text(invoice.party.name, 32))
         pdf.setFillColor(INK)
         pdf.setFont("Helvetica-Bold", 7.7)
-        pdf.drawRightString(width - 38, y, f"{invoice.total:.2f}")
-        total += invoice.total
+        pdf.drawRightString(500, y, f"{invoice.total:.2f}")
+        pdf.drawRightString(590, y, f"{invoice.paid_amount:.2f}")
+        pdf.drawRightString(680, y, f"{invoice.balance_due:.2f}")
+        pdf.setFillColor(TEAL if invoice.payment_status == TradeDocument.PaymentStatus.PAID else INK_SOFT)
+        pdf.setFont("Helvetica-Bold", 7.2)
+        pdf.drawString(710, y, invoice.get_payment_status_display())
+        total_balance += invoice.balance_due
         y -= 20
     if rows:
         if y < 75:
@@ -462,13 +738,14 @@ def invoice_report_pdf(request):
                 business,
                 "Invoice register",
                 date_range=date_range,
+                page_size=page_size,
                 page_number=page_number,
             )
         y = draw_report_total(
             pdf,
             y - 3,
-            "Net invoice value",
-            total,
+            "Outstanding balance",
+            total_balance,
             width=width,
             currency=business.currency,
         )
@@ -516,7 +793,7 @@ def money_receipt_report_csv(request):
             receipt.receipt_date,
             receipt.party.name if receipt.party else "",
             str(receipt.payment_account) if receipt.payment_account else "",
-            "Immediate sale" if receipt.voucher.voucher_type == Voucher.Type.SALE else "Receipt voucher",
+            _receipt_source(receipt),
             receipt.voucher.journal_entry.reference,
             receipt.amount,
             receipt.voucher.notes,
@@ -595,11 +872,7 @@ def money_receipt_report_pdf(request):
             y,
             clean_text(receipt.party.name if receipt.party else "Not specified", 27),
         )
-        source = (
-            "Immediate sale"
-            if receipt.voucher.voucher_type == Voucher.Type.SALE
-            else "Receipt voucher"
-        )
+        source = _receipt_source(receipt)
         pdf.drawString(
             390,
             y,
@@ -644,7 +917,9 @@ def money_receipt_document_pdf(request, pk):
         return render(request, "core/no-business.html")
     receipt = get_object_or_404(
         MoneyReceipt.objects.select_related(
-            "party", "payment_account", "voucher__journal_entry"
+            "party",
+            "payment_account",
+            "voucher__journal_entry__sale_payment__sale",
         ),
         pk=pk,
         business=business,
@@ -695,15 +970,11 @@ def money_receipt_document_pdf(request, pk):
     pdf.drawRightString(width - PAGE_MARGIN - 14, y - 34, "RECEIVED")
     y -= 86
 
+    receipt_source = _receipt_source(receipt)
     detail_rows = [
         ("Payment account", str(receipt.payment_account) if receipt.payment_account else "Not mapped"),
         ("Accounting reference", receipt.voucher.journal_entry.reference),
-        (
-            "Receipt source",
-            "Immediate paid sale"
-            if receipt.voucher.voucher_type == Voucher.Type.SALE
-            else "Posted receipt voucher",
-        ),
+        ("Receipt source", receipt_source),
     ]
     pdf.setFillColor(MUTED)
     pdf.setFont("Helvetica-Bold", 7)

@@ -4,10 +4,10 @@ from io import BytesIO
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Q, Sum
+from django.db.models import Prefetch, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -24,12 +24,47 @@ from core.application.services import (
     SALES_POST,
     SALES_VIEW,
 )
-from core.views import authorize, request_business
+from core.pdf import (
+    BORDER,
+    BORDER_STRONG,
+    INK,
+    INK_SOFT,
+    MUTED,
+    PAGE_MARGIN,
+    SURFACE_SUBTLE,
+    TEAL,
+    TEAL_SOFT,
+    clean_text,
+    draw_document_header,
+    draw_empty_state,
+    draw_page_footer,
+    draw_report_header,
+    draw_report_total,
+    draw_table_header,
+    draw_table_row_background,
+)
+from core.views import authorize, is_authorized, request_business
 from core.infrastructure.numbering import allocate_reference_number
-from operations.application.services import PostTradeDocumentCommand, post_trade_document
-from operations.forms import TradeDocumentForm, TradeLineFormSet
-from operations.infrastructure.repositories import DjangoTradeDocumentRepository
-from operations.models import TradeDocument
+from operations.application.services import (
+    PayPurchaseCommand,
+    PostTradeDocumentCommand,
+    ReceiveSalePaymentCommand,
+    pay_purchase,
+    post_trade_document,
+    receive_sale_payment,
+)
+from operations.forms import (
+    PayPurchaseForm,
+    ReceiveSalePaymentForm,
+    TradeDocumentForm,
+    TradeLineFormSet,
+)
+from operations.infrastructure.repositories import (
+    DjangoPurchasePaymentRepository,
+    DjangoSalePaymentRepository,
+    DjangoTradeDocumentRepository,
+)
+from operations.models import PurchasePayment, SalePayment, TradeDocument
 
 
 def permissions_for(kind):
@@ -176,7 +211,21 @@ def document_detail(request, kind, pk):
     document = get_object_or_404(
         TradeDocument.objects.select_related(
             "party", "period", "debit_account", "credit_account", "journal_entry", "created_by"
-        ).prefetch_related("lines__product"),
+        ).prefetch_related(
+            "lines__product",
+            Prefetch(
+                "payments",
+                queryset=SalePayment.objects.select_related(
+                    "payment_account", "money_receipt", "journal_entry", "received_by"
+                ),
+            ),
+            Prefetch(
+                "supplier_payments",
+                queryset=PurchasePayment.objects.select_related(
+                    "payment_account", "voucher", "journal_entry", "paid_by"
+                ),
+            ),
+        ),
         business=business, kind=kind, pk=pk,
     )
     money_receipt = (
@@ -192,7 +241,342 @@ def document_detail(request, kind, pk):
         "document": document,
         "kind": kind,
         "money_receipt": money_receipt,
+        "payments": (
+            document.payments.all()
+            if kind == TradeDocument.Kind.SALE
+            else document.supplier_payments.all()
+        ),
+        "paid_amount": document.paid_amount,
+        "balance_due": document.balance_due,
+        "payment_status": document.payment_status,
+        "is_credit_sale": (
+            kind == TradeDocument.Kind.SALE
+            and document.debit_account.system_role
+            == "accounts_receivable"
+        ),
+        "is_credit_purchase": (
+            kind == TradeDocument.Kind.PURCHASE
+            and document.credit_account.system_role
+            == "accounts_payable"
+        ),
     })
+
+
+@login_required
+def sale_receive_payment(request, pk):
+    business = operational_business(request, TradeDocument.Kind.SALE, 2)
+    if business is None:
+        return render(request, "core/no-business.html")
+    sale = get_object_or_404(
+        TradeDocument.objects.select_related(
+            "party", "period", "debit_account", "credit_account"
+        ).prefetch_related("payments"),
+        business=business,
+        kind=TradeDocument.Kind.SALE,
+        pk=pk,
+    )
+    if sale.status != TradeDocument.Status.POSTED:
+        messages.error(request, "Payment can be received only against a posted sale.")
+        return redirect("sale-detail", pk=sale.pk)
+    if not sale.can_receive_payment:
+        detail = (
+            "This invoice is already paid in full."
+            if sale.balance_due <= 0
+            else "This sale was not posted to Accounts Receivable."
+        )
+        messages.error(request, detail)
+        return redirect("sale-detail", pk=sale.pk)
+
+    form = ReceiveSalePaymentForm(
+        request.POST or None,
+        business=business,
+        sale=sale,
+    )
+    if request.method == "POST" and form.is_valid():
+        try:
+            payment = receive_sale_payment(
+                ReceiveSalePaymentCommand(
+                    sale_id=sale.pk,
+                    business_id=business.pk,
+                    payment_account_id=form.cleaned_data["payment_account"].pk,
+                    amount=form.cleaned_data["amount"],
+                    payment_date=form.cleaned_data["payment_date"],
+                    idempotency_key=form.cleaned_data["idempotency_key"],
+                    notes=form.cleaned_data["notes"],
+                    user_id=request.user.pk,
+                ),
+                DjangoSalePaymentRepository(),
+            )
+        except (ValidationError, IntegrityError) as exc:
+            detail = (
+                " ".join(exc.messages)
+                if isinstance(exc, ValidationError)
+                else "The payment could not be posted because a financial reference already exists."
+            )
+            form.add_error(None, detail)
+        else:
+            messages.success(
+                request,
+                f"Payment {payment.number} posted. Money receipt {payment.money_receipt.number} is ready.",
+            )
+            return redirect("sale-detail", pk=sale.pk)
+    return render(request, "operations/receive-payment.html", {
+        "business": business,
+        "sale": sale,
+        "form": form,
+        "paid_amount": sale.paid_amount,
+        "balance_due": sale.balance_due,
+    })
+
+
+@login_required
+def purchase_pay_supplier(request, pk):
+    business = operational_business(request, TradeDocument.Kind.PURCHASE, 2)
+    if business is None:
+        return render(request, "core/no-business.html")
+    purchase = get_object_or_404(
+        TradeDocument.objects.select_related(
+            "party", "period", "debit_account", "credit_account"
+        ).prefetch_related("supplier_payments"),
+        business=business,
+        kind=TradeDocument.Kind.PURCHASE,
+        pk=pk,
+    )
+    if purchase.status != TradeDocument.Status.POSTED:
+        messages.error(request, "Payment can be made only against a posted purchase.")
+        return redirect("purchase-detail", pk=purchase.pk)
+    if not purchase.can_pay_supplier:
+        detail = (
+            "This supplier invoice is already paid in full."
+            if purchase.balance_due <= 0
+            else "This purchase was not posted to Accounts Payable."
+        )
+        messages.error(request, detail)
+        return redirect("purchase-detail", pk=purchase.pk)
+
+    form = PayPurchaseForm(
+        request.POST or None,
+        business=business,
+        purchase=purchase,
+    )
+    if request.method == "POST" and form.is_valid():
+        try:
+            payment = pay_purchase(
+                PayPurchaseCommand(
+                    purchase_id=purchase.pk,
+                    business_id=business.pk,
+                    payment_account_id=form.cleaned_data["payment_account"].pk,
+                    amount=form.cleaned_data["amount"],
+                    payment_date=form.cleaned_data["payment_date"],
+                    idempotency_key=form.cleaned_data["idempotency_key"],
+                    notes=form.cleaned_data["notes"],
+                    user_id=request.user.pk,
+                ),
+                DjangoPurchasePaymentRepository(),
+            )
+        except (ValidationError, IntegrityError) as exc:
+            detail = (
+                " ".join(exc.messages)
+                if isinstance(exc, ValidationError)
+                else "The payment could not be posted because a financial reference already exists."
+            )
+            form.add_error(None, detail)
+        else:
+            messages.success(
+                request,
+                f"Supplier payment {payment.number} posted with voucher {payment.voucher.number}.",
+            )
+            return redirect("purchase-detail", pk=purchase.pk)
+    return render(request, "operations/pay-purchase.html", {
+        "business": business,
+        "purchase": purchase,
+        "form": form,
+        "paid_amount": purchase.paid_amount,
+        "balance_due": purchase.balance_due,
+    })
+
+
+@login_required
+def payment_center(request):
+    business = request_business(request)
+    if business is None:
+        return render(request, "core/no-business.html")
+    can_view_sales = is_authorized(request.user, business, SALES_VIEW)
+    can_view_purchases = is_authorized(request.user, business, PURCHASES_VIEW)
+    if not can_view_sales and not can_view_purchases:
+        raise PermissionDenied
+
+    query = request.GET.get("q", "").strip()
+    receivable_query = TradeDocument.objects.none()
+    payable_query = TradeDocument.objects.none()
+    if can_view_sales:
+        receivable_query = TradeDocument.objects.filter(
+            business=business,
+            kind=TradeDocument.Kind.SALE,
+            status=TradeDocument.Status.POSTED,
+            debit_account__system_role="accounts_receivable",
+        ).select_related("party", "debit_account").prefetch_related("payments")
+        if query:
+            receivable_query = receivable_query.filter(
+                Q(number__icontains=query) | Q(party__name__icontains=query)
+            )
+    if can_view_purchases:
+        payable_query = TradeDocument.objects.filter(
+            business=business,
+            kind=TradeDocument.Kind.PURCHASE,
+            status=TradeDocument.Status.POSTED,
+            credit_account__system_role="accounts_payable",
+        ).select_related("party", "credit_account").prefetch_related("supplier_payments")
+        if query:
+            payable_query = payable_query.filter(
+                Q(number__icontains=query) | Q(party__name__icontains=query)
+            )
+
+    receivables = [document for document in receivable_query if document.balance_due > 0]
+    payables = [document for document in payable_query if document.balance_due > 0]
+    receipts = (
+        SalePayment.objects.filter(business=business)
+        .select_related("sale__party", "payment_account", "money_receipt")
+        .order_by("-payment_date", "-id")[:10]
+        if can_view_sales
+        else SalePayment.objects.none()
+    )
+    disbursements = (
+        PurchasePayment.objects.filter(business=business)
+        .select_related("purchase__party", "payment_account", "voucher")
+        .order_by("-payment_date", "-id")[:10]
+        if can_view_purchases
+        else PurchasePayment.objects.none()
+    )
+    return render(request, "operations/payment-center.html", {
+        "business": business,
+        "query": query,
+        "receivables": receivables,
+        "payables": payables,
+        "receivable_total": sum(
+            (document.balance_due for document in receivables), Decimal("0.00")
+        ),
+        "payable_total": sum(
+            (document.balance_due for document in payables), Decimal("0.00")
+        ),
+        "receipts": receipts,
+        "disbursements": disbursements,
+        "show_receivables": can_view_sales,
+        "show_payables": can_view_purchases,
+    })
+
+
+@login_required
+def purchase_payment_document_pdf(request, pk):
+    business = operational_business(request, TradeDocument.Kind.PURCHASE, 0)
+    if business is None:
+        return render(request, "core/no-business.html")
+    payment = get_object_or_404(
+        PurchasePayment.objects.select_related(
+            "purchase__party", "payment_account", "journal_entry", "voucher", "paid_by"
+        ),
+        pk=pk,
+        business=business,
+    )
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
+    width, _ = A4
+    pdf.setTitle(f"Payment voucher {payment.voucher.number}")
+    pdf.setAuthor("Prime Ledger")
+    width, _, y = draw_document_header(
+        pdf,
+        business,
+        "Payment voucher",
+        payment.voucher.number,
+        payment.payment_date,
+        status="Posted",
+    )
+
+    pdf.setFillColor(SURFACE_SUBTLE)
+    pdf.setStrokeColor(BORDER)
+    pdf.roundRect(PAGE_MARGIN, y - 58, width - (2 * PAGE_MARGIN), 66, 5, stroke=1, fill=1)
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawString(PAGE_MARGIN + 14, y - 13, "PAID TO")
+    pdf.setFillColor(INK)
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(
+        PAGE_MARGIN + 14,
+        y - 34,
+        clean_text(payment.purchase.party.name, 62),
+    )
+    if payment.purchase.party.address:
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica", 7.5)
+        pdf.drawString(
+            PAGE_MARGIN + 14,
+            y - 48,
+            clean_text(payment.purchase.party.address, 78),
+        )
+    y -= 82
+
+    pdf.setFillColor(TEAL_SOFT)
+    pdf.roundRect(PAGE_MARGIN, y - 58, width - (2 * PAGE_MARGIN), 64, 5, stroke=0, fill=1)
+    pdf.setFillColor(TEAL)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawString(PAGE_MARGIN + 14, y - 14, "AMOUNT PAID")
+    pdf.setFillColor(INK)
+    pdf.setFont("Helvetica-Bold", 22)
+    pdf.drawString(PAGE_MARGIN + 14, y - 42, f"{business.currency} {payment.amount:,.2f}")
+    pdf.setFillColor(TEAL)
+    pdf.setFont("Helvetica-Bold", 7.5)
+    pdf.drawRightString(width - PAGE_MARGIN - 14, y - 34, "PAID")
+    y -= 86
+
+    detail_rows = [
+        ("Paid from", str(payment.payment_account)),
+        ("Purchase invoice", payment.purchase.number),
+        ("Accounting reference", payment.journal_entry.reference),
+        ("Payment allocation", payment.number),
+    ]
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawString(PAGE_MARGIN, y, "PAYMENT DETAILS")
+    y -= 15
+    for label, value in detail_rows:
+        pdf.setStrokeColor(BORDER)
+        pdf.line(PAGE_MARGIN, y - 7, width - PAGE_MARGIN, y - 7)
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica", 8)
+        pdf.drawString(PAGE_MARGIN, y, label)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 8)
+        pdf.drawRightString(width - PAGE_MARGIN, y, clean_text(value, 60))
+        y -= 25
+
+    if payment.notes:
+        y -= 10
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica-Bold", 7)
+        pdf.drawString(PAGE_MARGIN, y, "NOTES")
+        y -= 23
+        pdf.setFillColor(SURFACE_SUBTLE)
+        pdf.roundRect(PAGE_MARGIN, y - 23, width - (2 * PAGE_MARGIN), 40, 4, stroke=0, fill=1)
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 8)
+        pdf.drawString(PAGE_MARGIN + 12, y - 5, clean_text(payment.notes, 100))
+        y -= 48
+
+    signature_y = min(y - 72, 155)
+    pdf.setStrokeColor(BORDER_STRONG)
+    pdf.line(PAGE_MARGIN, signature_y, 195, signature_y)
+    pdf.line(width - 195, signature_y, width - PAGE_MARGIN, signature_y)
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica", 7.5)
+    pdf.drawString(PAGE_MARGIN, signature_y - 13, "Prepared by")
+    pdf.drawRightString(width - PAGE_MARGIN, signature_y - 13, "Authorized by")
+    draw_page_footer(pdf, width=width, page_number=1)
+    pdf.save()
+    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="payment-voucher-{payment.voucher.number}.pdf"'
+    )
+    return response
 
 
 @login_required
@@ -325,55 +709,103 @@ def document_pdf(request, kind):
     if business is None:
         return render(request, "core/no-business.html")
     documents, _ = filtered_documents(request, business, kind)
+    rows = list(documents)
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
     width, height = A4
     pdf.setTitle(f"{business.name} {kind} register")
-    y = height - 48
-    pdf.setFont("Helvetica-Bold", 15)
-    pdf.drawString(42, y, business.name)
-    y -= 22
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(42, y, f"{TradeDocument.Kind(kind).label} register")
-    pdf.setFont("Helvetica", 8)
-    for label, value in _report_headers(None, business, kind, request)[2:]:
-        y -= 14
-        pdf.drawString(42, y, f"{label}: {value}")
-    y -= 22
-    pdf.setFont("Helvetica-Bold", 8)
-    pdf.drawString(42, y, "Number")
-    pdf.drawString(140, y, "Date")
-    pdf.drawString(215, y, "Party")
-    if kind == TradeDocument.Kind.SALE:
-        pdf.drawString(350, y, "Status")
-        pdf.drawRightString(445, y, "Subtotal")
-        pdf.drawRightString(505, y, "Discount")
-    else:
-        pdf.drawString(390, y, "Status")
-    pdf.drawRightString(width - 42, y, f"Total ({business.currency})")
-    y -= 9
-    pdf.line(42, y, width - 42, y)
-    pdf.setFont("Helvetica", 8)
-    rows = list(documents)
-    if not rows:
-        y -= 22
-        pdf.drawString(42, y, "No records for the selected filters.")
-    for document in rows:
-        if y < 55:
-            pdf.showPage()
-            y = height - 48
-            pdf.setFont("Helvetica", 8)
-        y -= 18
-        pdf.drawString(42, y, document.number[:18])
-        pdf.drawString(140, y, document.document_date.strftime("%d-%b-%Y"))
-        pdf.drawString(215, y, document.party.name[:30])
+    pdf.setAuthor("Prime Ledger")
+    page_number = 1
+    date_range = f"{request.GET.get('date_from') or 'All'} to {request.GET.get('date_to') or 'All'}"
+
+    def header():
+        return draw_report_header(
+            pdf,
+            business,
+            f"{TradeDocument.Kind(kind).label} register",
+            page_number=page_number,
+            metadata=(
+                ("Reporting period", date_range),
+                ("Currency", business.currency),
+                ("Tax basis", "Not included"),
+            ),
+        )
+
+    def columns(current_y):
         if kind == TradeDocument.Kind.SALE:
-            pdf.drawString(350, y, document.get_status_display())
-            pdf.drawRightString(445, y, f"{document.subtotal:.2f}")
+            headings = (
+                (PAGE_MARGIN, "Number", "left"),
+                (119, "Date", "left"),
+                (191, "Customer", "left"),
+                (388, "Status", "left"),
+                (455, "Subtotal", "right"),
+                (505, "Discount", "right"),
+                (width - PAGE_MARGIN, f"Total ({business.currency})", "right"),
+            )
+        else:
+            headings = (
+                (PAGE_MARGIN, "Number", "left"),
+                (125, "Date", "left"),
+                (205, "Supplier", "left"),
+                (420, "Status", "left"),
+                (width - PAGE_MARGIN, f"Total ({business.currency})", "right"),
+            )
+        return draw_table_header(pdf, current_y, headings, width=width)
+
+    width, height, y = header()
+    y = columns(y)
+    if not rows:
+        y = draw_empty_state(
+            pdf,
+            y,
+            f"No {kind} records match the selected filters",
+            width=width,
+        )
+    report_total = Decimal("0.00")
+    for row_index, document in enumerate(rows):
+        if y < 72:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            _, _, y = header()
+            y = columns(y)
+        draw_table_row_background(pdf, y, width=width, row_index=row_index)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.drawString(PAGE_MARGIN, y, document.number[:18])
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7.5)
+        if kind == TradeDocument.Kind.SALE:
+            pdf.drawString(119, y, document.document_date.strftime("%d %b %Y"))
+            pdf.drawString(191, y, clean_text(document.party.name, 27))
+            pdf.drawString(388, y, document.get_status_display())
+            pdf.drawRightString(455, y, f"{document.subtotal:.2f}")
+            pdf.setFillColor(MUTED)
             pdf.drawRightString(505, y, f"{document.discount_amount:.2f}")
         else:
-            pdf.drawString(390, y, document.get_status_display())
-        pdf.drawRightString(width - 42, y, f"{document.total:.2f}")
+            pdf.drawString(125, y, document.document_date.strftime("%d %b %Y"))
+            pdf.drawString(205, y, clean_text(document.party.name, 30))
+            pdf.drawString(420, y, document.get_status_display())
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.drawRightString(width - PAGE_MARGIN, y, f"{document.total:.2f}")
+        report_total += document.total
+        y -= 20
+    if rows:
+        if y < 75:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            _, _, y = header()
+        draw_report_total(
+            pdf,
+            y - 3,
+            "Posted value" if request.GET.get("state") == "posted" else "Register value",
+            report_total,
+            width=width,
+            currency=business.currency,
+        )
+    draw_page_footer(pdf, width=width, page_number=page_number)
     pdf.save()
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{kind}-register.pdf"'
@@ -386,7 +818,9 @@ def document_print_pdf(request, kind, pk):
     if business is None:
         return render(request, "core/no-business.html")
     document = get_object_or_404(
-        TradeDocument.objects.select_related("party", "period").prefetch_related("lines__product"),
+        TradeDocument.objects.select_related(
+            "party", "period", "debit_account"
+        ).prefetch_related("lines__product", "payments"),
         business=business, kind=kind, pk=pk,
     )
     buffer = BytesIO()
@@ -394,61 +828,155 @@ def document_print_pdf(request, kind, pk):
     width, height = A4
     document_label = "Sales invoice" if kind == TradeDocument.Kind.SALE else "Purchase"
     pdf.setTitle(f"{document_label} {document.number}")
-    y = height - 48
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawString(42, y, business.name)
-    y -= 22
+    pdf.setAuthor("Prime Ledger")
+    page_number = 1
+
+    def header():
+        return draw_document_header(
+            pdf,
+            business,
+            document_label,
+            document.number,
+            document.document_date,
+            status=document.get_status_display(),
+        )
+
+    def columns(current_y):
+        return draw_table_header(
+            pdf,
+            current_y,
+            (
+                (PAGE_MARGIN, "Item / description", "left"),
+                (300, "Quantity", "right"),
+                (425, f"Unit price ({business.currency})", "right"),
+                (width - PAGE_MARGIN, f"Line total ({business.currency})", "right"),
+            ),
+            width=width,
+        )
+
+    width, height, y = header()
+    pdf.setFillColor(SURFACE_SUBTLE)
+    pdf.setStrokeColor(BORDER)
+    pdf.roundRect(PAGE_MARGIN, y - 69, 315, 76, 5, stroke=1, fill=1)
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawString(PAGE_MARGIN + 13, y - 14, "BILL TO")
+    pdf.setFillColor(INK)
     pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(42, y, f"{document_label} {document.number}")
-    pdf.setFont("Helvetica", 8)
-    details = [
-        ("Party", document.party.name),
-        ("Date", document.document_date.strftime("%d-%b-%Y")),
-        ("Period", document.period.name),
+    pdf.drawString(PAGE_MARGIN + 13, y - 34, clean_text(document.party.name, 42))
+    if document.party.address:
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica", 7.5)
+        pdf.drawString(PAGE_MARGIN + 13, y - 50, clean_text(document.party.address, 52))
+
+    meta_x = 380
+    meta_rows = [
+        ("Fiscal period", document.period.name),
         ("Currency", business.currency),
         ("Tax", "Not included"),
-        ("Status", document.get_status_display()),
-        ("Generated", timezone.localdate().strftime("%d-%b-%Y")),
     ]
-    for label, value in details:
-        y -= 14
-        pdf.drawString(42, y, f"{label}: {value}")
-    y -= 22
-    pdf.setFont("Helvetica-Bold", 8)
-    pdf.drawString(42, y, "Item")
-    pdf.drawString(240, y, "Quantity")
-    pdf.drawRightString(420, y, "Unit price")
-    pdf.drawRightString(width - 42, y, "Line total")
-    y -= 9
-    pdf.line(42, y, width - 42, y)
-    pdf.setFont("Helvetica", 8)
-    for line in document.lines.all():
-        y -= 18
-        pdf.drawString(42, y, line.description[:34])
-        pdf.drawString(240, y, f"{line.quantity:.3f}")
-        pdf.drawRightString(420, y, f"{line.unit_price:.2f}")
-        pdf.drawRightString(width - 42, y, f"{line.line_total:.2f}")
-    y -= 13
-    pdf.line(350, y, width - 42, y)
+    meta_y = y - 11
+    for label, value in meta_rows:
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica", 7.5)
+        pdf.drawString(meta_x, meta_y, label)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.5)
+        pdf.drawRightString(width - PAGE_MARGIN, meta_y, clean_text(value, 24))
+        meta_y -= 20
+    y -= 95
+    y = columns(y)
+
+    for row_index, line in enumerate(document.lines.all()):
+        if y < 160:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            _, _, y = header()
+            y = columns(y)
+        draw_table_row_background(pdf, y, width=width, row_index=row_index, height=22)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
+        item_name = line.product.name or line.description
+        pdf.drawString(PAGE_MARGIN, y + 2, clean_text(item_name, 37))
+        if line.description and line.description != item_name:
+            pdf.setFillColor(MUTED)
+            pdf.setFont("Helvetica", 6.5)
+            pdf.drawString(PAGE_MARGIN, y - 7, clean_text(line.description, 44))
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7.7)
+        pdf.drawRightString(300, y, f"{line.quantity:.3f}")
+        pdf.drawRightString(425, y, f"{line.unit_price:.2f}")
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.drawRightString(width - PAGE_MARGIN, y, f"{line.line_total:.2f}")
+        y -= 22
+
+    required_total_space = 270 if kind == TradeDocument.Kind.SALE else 215
+    if y < required_total_space:
+        draw_page_footer(pdf, width=width, page_number=page_number)
+        pdf.showPage()
+        page_number += 1
+        _, _, y = header()
+    y -= 8
+    totals_x = 350
+    pdf.setStrokeColor(BORDER_STRONG)
+    pdf.line(totals_x, y, width - PAGE_MARGIN, y)
     if document.discount_amount:
         y -= 17
-        pdf.setFont("Helvetica", 9)
-        pdf.drawRightString(470, y, f"Subtotal ({business.currency})")
-        pdf.drawRightString(width - 42, y, f"{document.subtotal:.2f}")
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 8)
+        pdf.drawString(totals_x, y, "Subtotal")
+        pdf.drawRightString(width - PAGE_MARGIN, y, f"{document.subtotal:.2f} {business.currency}")
         y -= 16
         discount_label = "Discount"
         if document.discount_type == TradeDocument.DiscountType.PERCENTAGE:
             discount_label += f" ({document.discount_value:.2f}%)"
-        pdf.drawRightString(470, y, discount_label)
-        pdf.drawRightString(width - 42, y, f"-{document.discount_amount:.2f}")
-    y -= 18
-    pdf.setFont("Helvetica-Bold", 10)
-    pdf.drawRightString(470, y, f"Total ({business.currency})")
-    pdf.drawRightString(width - 42, y, f"{document.total:.2f}")
+        pdf.setFillColor(MUTED)
+        pdf.drawString(totals_x, y, discount_label)
+        pdf.drawRightString(width - PAGE_MARGIN, y, f"-{document.discount_amount:.2f} {business.currency}")
+    y -= 25
+    pdf.setFillColor(TEAL_SOFT)
+    pdf.roundRect(totals_x - 8, y - 8, width - PAGE_MARGIN - totals_x + 8, 32, 4, stroke=0, fill=1)
+    pdf.setFillColor(TEAL)
+    pdf.setFont("Helvetica-Bold", 8)
+    pdf.drawString(totals_x, y + 4, "TOTAL")
+    pdf.setFillColor(INK)
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawRightString(width - PAGE_MARGIN, y + 2, f"{document.total:,.2f} {business.currency}")
+    if kind == TradeDocument.Kind.SALE:
+        y -= 33
+        settlement_rows = [
+            ("Amount paid", document.paid_amount),
+            ("Balance due", document.balance_due),
+        ]
+        for label, value in settlement_rows:
+            pdf.setFillColor(INK_SOFT if label == "Amount paid" else TEAL)
+            pdf.setFont("Helvetica-Bold" if label == "Balance due" else "Helvetica", 8)
+            pdf.drawString(totals_x, y, label)
+            pdf.drawRightString(width - PAGE_MARGIN, y, f"{value:,.2f} {business.currency}")
+            y -= 17
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica-Bold", 7)
+        pdf.drawRightString(
+            width - PAGE_MARGIN,
+            y,
+            document.get_payment_status_display().upper(),
+        )
     if document.notes:
         y -= 30
-        pdf.setFont("Helvetica", 8)
-        pdf.drawString(42, y, f"Notes: {document.notes[:90]}")
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica-Bold", 7)
+        pdf.drawString(PAGE_MARGIN, y, "NOTES")
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7.5)
+        pdf.drawString(PAGE_MARGIN, y - 14, clean_text(document.notes, 100))
+    draw_page_footer(
+        pdf,
+        width=width,
+        page_number=page_number,
+        note="Generated by Prime Ledger / Financial values shown in the stated currency",
+    )
     pdf.save()
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     file_prefix = "invoice" if kind == TradeDocument.Kind.SALE else "purchase"

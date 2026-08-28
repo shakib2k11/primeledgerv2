@@ -39,6 +39,12 @@
     </a>
     {% endif %}
     {% if can_view_accounting %}
+    <a href="{% url 'account-activity-report' %}" class="report-directory-row">
+      <span class="report-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 3h16v18H4V3Zm3 4v2h10V7H7Zm0 4v2h4v-2H7Zm6 0v2h4v-2h-4Zm-6 4v2h4v-2H7Zm6 0v2h4v-2h-4Z"/></svg></span>
+      <div class="report-directory-copy"><span class="overline">Accounting</span><strong>Account activity summary</strong><p>Opening balances, debit and credit activity, and closing balances for any date range.</p></div>
+      <span class="report-directory-format">Trial balance</span>
+      <span class="report-directory-action">Open <b aria-hidden="true">→</b></span>
+    </a>
     <a href="{% url 'money-receipt-report' %}" class="report-directory-row">
       <span class="report-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4Zm3 3v2h10V7H7Zm0 4v2h6v-2H7Zm0 4v2h4v-2H7Zm8-4v6h2v-6h-2Z"/></svg></span>
       <div class="report-directory-copy"><span class="overline">Accounting</span><strong>Money receipt register</strong><p>Immediate sale receipts and posted customer receipt vouchers.</p></div>

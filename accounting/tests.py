@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+import uuid
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -8,10 +9,16 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from accounting.application.services import ApplyAccountTemplateCommand, apply_account_template
-from accounting.infrastructure.repositories import DjangoAccountTemplateRepository
+from accounting.infrastructure.repositories import (
+    DjangoAccountTemplateRepository,
+    DjangoExpensePaymentRepository,
+    DjangoExpenseRepository,
+)
 from accounting.models import (
     Account,
     ChartOfAccountsTemplate,
+    ExpensePayment,
+    ExpenseRecord,
     FiscalPeriod,
     JournalEntry,
     JournalLine,
@@ -20,7 +27,7 @@ from accounting.models import (
 )
 from core.application.services import ACCOUNTING_MANAGE, ACCOUNTING_POST, ACCOUNTING_VIEW
 from core.infrastructure.repositories import DjangoJournalRepository
-from core.models import Business, Membership, Role
+from core.models import Business, Membership, Party, Role
 
 
 class AccountingInvariantTests(TestCase):
@@ -466,3 +473,216 @@ class AccountingUiTests(TestCase):
         self.assertEqual(receipt.amount, Decimal("125.00"))
         self.assertEqual(receipt.payment_account, self.cash)
         self.assertContains(response, "Money receipt MR-UI-2 is ready")
+
+
+class ExpenseWorkflowTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="expense-owner", password="pw"
+        )
+        self.business = Business.objects.create(name="Expense House", slug="expense-house")
+        Membership.objects.create(
+            user=self.user,
+            business=self.business,
+            level=Membership.Level.BUSINESS_ADMIN,
+        )
+        self.period = FiscalPeriod.objects.create(
+            business=self.business,
+            name="FY26",
+            starts_on=date(2026, 1, 1),
+            ends_on=date(2026, 12, 31),
+        )
+        self.cash = Account.objects.create(
+            business=self.business, code="1010", name="Cash",
+            account_type=Account.Type.ASSET, system_role=Account.SystemRole.CASH,
+        )
+        self.bank = Account.objects.create(
+            business=self.business, code="1020", name="Bank",
+            account_type=Account.Type.ASSET, system_role=Account.SystemRole.BANK,
+        )
+        self.payable = Account.objects.create(
+            business=self.business, code="2100", name="Accounts Payable",
+            account_type=Account.Type.LIABILITY,
+            system_role=Account.SystemRole.ACCOUNTS_PAYABLE,
+        )
+        self.rent = Account.objects.create(
+            business=self.business, code="6020", name="Rent",
+            account_type=Account.Type.EXPENSE,
+        )
+        self.salary = Account.objects.create(
+            business=self.business, code="6010", name="Salaries and Wages",
+            account_type=Account.Type.EXPENSE,
+        )
+        self.payee = Party.objects.create(
+            business=self.business, name="Property Owner", kind=Party.Kind.SUPPLIER
+        )
+        self.client.login(username="expense-owner", password="pw")
+
+    def create_expense(self, settlement=ExpenseRecord.Settlement.PAID, amount="1000.00"):
+        return DjangoExpenseRepository().create(
+            business_id=self.business.pk,
+            expense_date=date(2026, 8, 28),
+            expense_account_id=self.rent.pk,
+            settlement=settlement,
+            amount=Decimal(amount),
+            description="August office rent",
+            idempotency_key=uuid.uuid4(),
+            payee_id=self.payee.pk,
+            payment_account_id=(
+                self.cash.pk if settlement == ExpenseRecord.Settlement.PAID else None
+            ),
+            external_reference="LEASE-AUG",
+            user_id=self.user.pk,
+        )
+
+    def test_paid_expense_posts_balanced_journal_and_expense_voucher(self):
+        expense = self.create_expense()
+        self.assertEqual(expense.voucher.voucher_type, Voucher.Type.EXPENSE)
+        self.assertTrue(expense.journal_entry.posted)
+        self.assertEqual(expense.journal_entry.total_debit, Decimal("1000.00"))
+        self.assertTrue(expense.journal_entry.lines.filter(
+            account=self.rent, debit=Decimal("1000.00")
+        ).exists())
+        self.assertTrue(expense.journal_entry.lines.filter(
+            account=self.cash, credit=Decimal("1000.00")
+        ).exists())
+        self.assertEqual(expense.paid_amount, Decimal("1000.00"))
+        self.assertEqual(expense.balance_due, Decimal("0.00"))
+        self.assertEqual(expense.payment_status, "paid")
+        self.assertEqual(
+            self.client.get(reverse("expense-pdf", args=[expense.pk])).status_code, 200
+        )
+
+    def test_pay_later_expense_supports_partial_payments_without_duplicate_expense(self):
+        expense = self.create_expense(ExpenseRecord.Settlement.PAYABLE)
+        self.assertTrue(expense.journal_entry.lines.filter(
+            account=self.rent, debit=Decimal("1000.00")
+        ).exists())
+        self.assertTrue(expense.journal_entry.lines.filter(
+            account=self.payable, credit=Decimal("1000.00")
+        ).exists())
+        payment = DjangoExpensePaymentRepository().pay(
+            expense_id=expense.pk,
+            business_id=self.business.pk,
+            payment_account_id=self.bank.pk,
+            amount=Decimal("400.00"),
+            payment_date=date(2026, 8, 29),
+            idempotency_key=uuid.uuid4(),
+            notes="First installment",
+            user_id=self.user.pk,
+        )
+        expense.refresh_from_db()
+        self.assertEqual(expense.paid_amount, Decimal("400.00"))
+        self.assertEqual(expense.balance_due, Decimal("600.00"))
+        self.assertEqual(expense.payment_status, "partial")
+        self.assertTrue(payment.journal_entry.lines.filter(
+            account=self.payable, debit=Decimal("400.00")
+        ).exists())
+        self.assertTrue(payment.journal_entry.lines.filter(
+            account=self.bank, credit=Decimal("400.00")
+        ).exists())
+        self.assertFalse(payment.journal_entry.lines.filter(account=self.rent).exists())
+        self.assertEqual(payment.voucher.voucher_type, Voucher.Type.PAYMENT)
+
+    def test_overpayment_and_locked_period_roll_back_every_side_effect(self):
+        expense = self.create_expense(ExpenseRecord.Settlement.PAYABLE)
+        initial_journals = JournalEntry.objects.count()
+        with self.assertRaises(ValidationError):
+            DjangoExpensePaymentRepository().pay(
+                expense_id=expense.pk, business_id=self.business.pk,
+                payment_account_id=self.cash.pk, amount=Decimal("1000.01"),
+                payment_date=date(2026, 8, 29), idempotency_key=uuid.uuid4(),
+                user_id=self.user.pk,
+            )
+        self.assertEqual(ExpensePayment.objects.count(), 0)
+        self.assertEqual(JournalEntry.objects.count(), initial_journals)
+        self.period.is_locked = True
+        self.period.save(update_fields=["is_locked"])
+        with self.assertRaises(ValidationError):
+            DjangoExpensePaymentRepository().pay(
+                expense_id=expense.pk, business_id=self.business.pk,
+                payment_account_id=self.cash.pk, amount=Decimal("100.00"),
+                payment_date=date(2026, 8, 29), idempotency_key=uuid.uuid4(),
+                user_id=self.user.pk,
+            )
+        self.assertEqual(ExpensePayment.objects.count(), 0)
+
+    def test_expense_ui_register_exports_and_pay_form(self):
+        response = self.client.post(reverse("expense-create"), {
+            "expense_date": "2026-08-28",
+            "expense_account": self.salary.pk,
+            "payee": self.payee.pk,
+            "settlement": ExpenseRecord.Settlement.PAYABLE,
+            "payment_account": "",
+            "amount": "2500.00",
+            "description": "August payroll",
+            "external_reference": "PAYROLL-AUG",
+            "idempotency_key": str(uuid.uuid4()),
+            "confirm": "on",
+        })
+        self.assertEqual(response.status_code, 302)
+        expense = ExpenseRecord.objects.get(description="August payroll")
+        listing = self.client.get(reverse("expense-list"))
+        self.assertContains(listing, "August payroll")
+        self.assertContains(listing, "2500.00")
+        self.assertEqual(self.client.get(reverse("expense-csv")).status_code, 200)
+        pdf = self.client.get(reverse("expense-report-pdf"))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
+        paid = self.client.post(reverse("expense-pay", args=[expense.pk]), {
+            "payment_date": "2026-08-29",
+            "payment_account": self.bank.pk,
+            "amount": "1500.00",
+            "notes": "Payroll installment",
+            "idempotency_key": str(uuid.uuid4()),
+            "confirm": "on",
+        })
+        self.assertEqual(paid.status_code, 302)
+        self.assertEqual(ExpensePayment.objects.get().amount, Decimal("1500.00"))
+
+    def test_expense_api_is_tenant_scoped_and_posts_payment(self):
+        api = APIClient()
+        api.force_authenticate(self.user)
+        created = api.post(
+            reverse("api-expense-list"),
+            {
+                "expense_date": "2026-08-28",
+                "expense_account": self.rent.pk,
+                "payee": self.payee.pk,
+                "settlement": "payable",
+                "amount": "900.00",
+                "description": "Accrued rent",
+            },
+            format="json", HTTP_X_BUSINESS_ID=str(self.business.pk),
+        )
+        self.assertEqual(created.status_code, 201, created.data)
+        expense_id = created.data["id"]
+        paid = api.post(
+            reverse("api-expense-pay", args=[expense_id]),
+            {
+                "payment_date": "2026-08-29",
+                "payment_account": self.cash.pk,
+                "amount": "300.00",
+            },
+            format="json", HTTP_X_BUSINESS_ID=str(self.business.pk),
+        )
+        self.assertEqual(paid.status_code, 201, paid.data)
+        other = Business.objects.create(name="Other", slug="other-expense")
+        hidden = api.get(
+            reverse("api-expense-detail", args=[expense_id]),
+            HTTP_X_BUSINESS_ID=str(other.pk),
+        )
+        self.assertEqual(hidden.status_code, 404)
+
+    def test_accounting_viewer_cannot_post_expenses(self):
+        viewer = get_user_model().objects.create_user(username="expense-viewer", password="pw")
+        role = Role.objects.create(
+            business=self.business, name="Expense viewer", permissions=[ACCOUNTING_VIEW]
+        )
+        Membership.objects.create(
+            user=viewer, business=self.business, level=Membership.Level.EMPLOYEE,
+            role=role,
+        )
+        self.client.force_login(viewer)
+        self.assertEqual(self.client.get(reverse("expense-list")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("expense-create")).status_code, 403)

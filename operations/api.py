@@ -12,25 +12,38 @@ from rest_framework.response import Response
 from accounting.models import Account, FiscalPeriod, MoneyReceipt
 from core.api import TenantViewSetMixin, validation_detail
 from core.application.services import (
+    ACCOUNTING_POST, ACCOUNTING_VIEW, PermissionDenied, require_permission,
     PURCHASES_MANAGE, PURCHASES_POST, PURCHASES_VIEW,
     SALES_MANAGE, SALES_POST, SALES_VIEW,
 )
 from core.models import Party, Product
 from core.infrastructure.numbering import allocate_reference_number
 from operations.application.services import (
+    CreateBalanceSetoffCommand,
     PayPurchaseCommand,
     PostTradeDocumentCommand,
     ReceiveSalePaymentCommand,
+    SetoffAllocationCommand,
+    create_balance_setoff,
     pay_purchase,
     post_trade_document,
     receive_sale_payment,
 )
 from operations.infrastructure.repositories import (
+    DjangoBalanceSetoffRepository,
     DjangoPurchasePaymentRepository,
     DjangoSalePaymentRepository,
     DjangoTradeDocumentRepository,
 )
-from operations.models import PurchasePayment, SalePayment, TradeDocument, TradeLine
+from operations.models import (
+    BalanceSetoff,
+    PurchasePayment,
+    PurchaseSetoffAllocation,
+    SalePayment,
+    SaleSetoffAllocation,
+    TradeDocument,
+    TradeLine,
+)
 
 
 class TradeLineSerializer(serializers.ModelSerializer):
@@ -118,6 +131,90 @@ class PurchasePaymentSerializer(serializers.ModelSerializer):
             "voucher_number", "created_at",
         ]
         read_only_fields = fields
+
+
+class SaleSetoffAllocationSerializer(serializers.ModelSerializer):
+    document_id = serializers.IntegerField(source="sale_id", read_only=True)
+    document_number = serializers.CharField(source="sale.number", read_only=True)
+
+    class Meta:
+        model = SaleSetoffAllocation
+        fields = ["document_id", "document_number", "amount"]
+        read_only_fields = fields
+
+
+class PurchaseSetoffAllocationSerializer(serializers.ModelSerializer):
+    document_id = serializers.IntegerField(source="purchase_id", read_only=True)
+    document_number = serializers.CharField(source="purchase.number", read_only=True)
+
+    class Meta:
+        model = PurchaseSetoffAllocation
+        fields = ["document_id", "document_number", "amount"]
+        read_only_fields = fields
+
+
+class BalanceSetoffSerializer(serializers.ModelSerializer):
+    party_name = serializers.CharField(source="party.name", read_only=True)
+    voucher_number = serializers.CharField(source="voucher.number", read_only=True)
+    sale_allocations = SaleSetoffAllocationSerializer(many=True, read_only=True)
+    purchase_allocations = PurchaseSetoffAllocationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = BalanceSetoff
+        fields = [
+            "id", "number", "setoff_date", "party", "party_name", "total_amount",
+            "journal_entry", "voucher_number", "notes", "sale_allocations",
+            "purchase_allocations", "created_at",
+        ]
+        read_only_fields = fields
+
+
+class SetoffAllocationInputSerializer(serializers.Serializer):
+    document_id = serializers.IntegerField(min_value=1)
+    amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=Decimal("0.01")
+    )
+
+
+class BalanceSetoffCreateSerializer(serializers.Serializer):
+    party = serializers.PrimaryKeyRelatedField(queryset=Party.objects.none())
+    setoff_date = serializers.DateField(default=timezone.localdate)
+    sale_allocations = SetoffAllocationInputSerializer(many=True)
+    purchase_allocations = SetoffAllocationInputSerializer(many=True)
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    idempotency_key = serializers.UUIDField(default=uuid.uuid4)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        business = self.context.get("business")
+        if business:
+            self.fields["party"].queryset = Party.objects.filter(
+                business=business, is_active=True, kind=Party.Kind.BOTH
+            )
+
+    def validate_setoff_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError("Set-off date cannot be in the future.")
+        return value
+
+    def validate(self, attrs):
+        sales = attrs.get("sale_allocations", [])
+        purchases = attrs.get("purchase_allocations", [])
+        if not sales or not purchases:
+            raise serializers.ValidationError(
+                "Allocate at least one receivable invoice and one payable purchase."
+            )
+        if len({item["document_id"] for item in sales}) != len(sales) or len(
+            {item["document_id"] for item in purchases}
+        ) != len(purchases):
+            raise serializers.ValidationError("Each document may be allocated only once.")
+        sale_total = sum((item["amount"] for item in sales), Decimal("0.00"))
+        purchase_total = sum((item["amount"] for item in purchases), Decimal("0.00"))
+        if sale_total != purchase_total:
+            raise serializers.ValidationError(
+                "Receivable and payable allocation totals must be equal."
+            )
+        return attrs
 
 
 class TradeDocumentSerializer(serializers.ModelSerializer):
@@ -268,6 +365,8 @@ class BaseTradeDocumentViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
             "payments__money_receipt",
             "supplier_payments__payment_account",
             "supplier_payments__voucher",
+            "sale_setoff_allocations__setoff",
+            "purchase_setoff_allocations__setoff",
         )
         state = self.request.query_params.get("state")
         if state in TradeDocument.Status.values:
@@ -374,3 +473,63 @@ class PurchaseViewSet(BaseTradeDocumentViewSet):
             PurchasePaymentSerializer(payment).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class BalanceSetoffViewSet(TenantViewSetMixin, viewsets.GenericViewSet):
+    view_permission = ACCOUNTING_VIEW
+    manage_permission = ACCOUNTING_POST
+    http_method_names = ["get", "post", "head", "options"]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if request.method == "POST":
+            try:
+                require_permission(request.user, self.business, SALES_POST)
+                require_permission(request.user, self.business, PURCHASES_POST)
+            except PermissionDenied as exc:
+                raise DRFPermissionDenied(
+                    "Sales, purchase, and accounting posting permissions are required."
+                ) from exc
+
+    def get_queryset(self):
+        return BalanceSetoff.objects.filter(business=self.business).select_related(
+            "party", "voucher", "journal_entry"
+        ).prefetch_related(
+            "sale_allocations__sale", "purchase_allocations__purchase"
+        )
+
+    def list(self, request):
+        return Response(BalanceSetoffSerializer(self.get_queryset(), many=True).data)
+
+    def retrieve(self, request, pk=None):
+        return Response(BalanceSetoffSerializer(self.get_object()).data)
+
+    def create(self, request):
+        serializer = BalanceSetoffCreateSerializer(
+            data=request.data, context=self.get_serializer_context()
+        )
+        serializer.is_valid(raise_exception=True)
+        values = serializer.validated_data
+        try:
+            setoff = create_balance_setoff(
+                CreateBalanceSetoffCommand(
+                    business_id=self.business.pk,
+                    party_id=values["party"].pk,
+                    setoff_date=values["setoff_date"],
+                    sale_allocations=tuple(
+                        SetoffAllocationCommand(**item)
+                        for item in values["sale_allocations"]
+                    ),
+                    purchase_allocations=tuple(
+                        SetoffAllocationCommand(**item)
+                        for item in values["purchase_allocations"]
+                    ),
+                    idempotency_key=values["idempotency_key"],
+                    notes=values["notes"],
+                    user_id=request.user.pk,
+                ),
+                DjangoBalanceSetoffRepository(),
+            )
+        except DjangoValidationError as exc:
+            return Response(validation_detail(exc), status=status.HTTP_400_BAD_REQUEST)
+        return Response(BalanceSetoffSerializer(setoff).data, status=status.HTTP_201_CREATED)

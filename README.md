@@ -26,7 +26,7 @@ The first release is single-location per business, BDT-first, Bangladesh timezon
 - Fixed-amount or percentage sale discounts with net invoice and journal totals
 - Atomic sales/purchase posting into journals, vouchers, stock movements, weighted-average cost of goods sold, and money receipts for immediately paid sales
 - Filtered sales/purchase registers and deterministic CSV/PDF exports
-- Tenant-scoped contact, posted invoice, and money receipt registers with CSV/PDF exports
+- Tenant-scoped contact, posted invoice, money receipt, and arbitrary date-range account activity reports with CSV/PDF exports
 - Printable sales invoices and money receipts linked to immutable posted records
 - English/Bangla-ready business locale, BDT default currency and Bangladesh timezone
 - PostgreSQL-first runtime configuration through `DATABASE_URL`
@@ -130,15 +130,21 @@ Open `http://127.0.0.1:8000/admin/` for the initial management surface and `http
 - Partial and final customer-payment allocation from posted credit invoices, with automatic journal, receipt voucher, and money receipt generation
 - Partial and final supplier-payment allocation from posted Accounts Payable purchases, with automatic journal and printable payment voucher generation
 - Dedicated **Payments** workspace for open customer receivables, supplier payables, and recent settlement activity
+- Invoice-level receivable/payable set-off for contacts classified as Customer & Supplier, with multi-document allocation, automatic contra journal/voucher, and a printable statement
+- Dedicated operating-expense workflow for rent, employee salary, utilities, professional fees, and contingent expenditure, with paid-now/pay-later posting, partial payable settlement, expense/payment vouchers, and CSV/PDF registers
 
 Sales and purchase posting is transactional and idempotent. A successful post creates the balanced journal entry, immutable voucher, and applicable stock movements together. An immediately paid sale—identified by selecting a debit account mapped as Cash, Bank, or Mobile Financial Services—also creates one immutable money receipt with the net sale amount. A credit sale posted to Accounts Receivable exposes **Receive payment**: each partial or final collection is allocated to that invoice, debits the selected funds account, credits Accounts Receivable, and creates an immutable receipt voucher and money receipt atomically. A purchase posted to Accounts Payable exposes **Pay supplier**: each allocation debits Accounts Payable, credits the selected Cash, Bank, or Mobile Financial Services account, and creates an immutable printable payment voucher. Overpayments, future dates, locked periods, cross-tenant accounts, and duplicate request-key conflicts are rejected before side effects. Sales may apply one fixed-amount or percentage discount; receivable, revenue, voucher, invoice, receipt, and report totals use the net amount after discount. Product sales debit Cost of Goods Sold and credit Inventory using the moving weighted-average cost of stock on hand, so a commercial discount never changes inventory cost; service lines do not affect stock or COGS. A failed validation—including an excessive discount, insufficient sale stock, missing required posting roles, or a locked period—rolls back every side effect. Draft sales and purchases in open periods can be deleted after explicit confirmation; posted or locked-period documents cannot be deleted, and a deleted draft's automatic number is never reused.
+
+When the same contact is classified as **Customer & Supplier** and has both open balances, use **Payments → Mutual balances** to allocate one or more sales against one or more purchases. Posting debits Accounts Payable and credits Accounts Receivable by equal amounts, creates an immutable contra voucher and printable statement, and updates both documents without moving cash. Unbalanced or excessive allocations, future dates, locked periods, and cross-tenant documents are rejected atomically.
+
+The **Expenses** workspace recognizes operating costs directly against an active expense account. **Paid now** debits the expense and credits Cash, Bank, or Mobile Financial Services. **Pay later** debits the expense and credits Accounts Payable; subsequent partial or final payments debit that liability and credit the selected funds account without recognizing the expense twice. Employees can be maintained as Employee contacts, while landlords and other vendors can remain suppliers. Every posting creates an immutable journal and voucher, respects period locks and tenant boundaries, and appears in the filtered expense register and furnished PDF/CSV exports.
 
 ### Remaining MVP work
 
 - Sales and purchase returns
 - Expenses and one payment split across multiple invoices
 - Controlled reversal workflow for posted transactions
-- Receivable, payable, cashflow, and profit reports
+- Cashflow, profit-and-loss, and balance-sheet reports
 - Optional VAT/GST configuration and calculations
 
 ### Later phase
@@ -205,11 +211,15 @@ Journal entries are created as drafts with nested lines and posted through `POST
 
 Sales, purchases, customer receipts, supplier payments, and stock movements receive an immutable tenant-wide automatic number when first saved. The format is `YYNNNNNN`: the transaction year followed by a six-digit sequence, such as `26000001`. These records share the same business/year counter so a number identifies exactly one operational record; each business has an independent counter, and the sequence restarts at `000001` in January. The two-digit year format supports transaction years 2000–2099. Client-supplied numbers are ignored, while the optional stock movement source reference remains available separately. Register screens, search, APIs, CSV exports, PDFs, journals, and vouchers use the generated number.
 
+Balance set-offs are listed, retrieved, and created at `/api/v1/balance-setoffs/`. Creation accepts a `party`, `setoff_date`, equal `sale_allocations` and `purchase_allocations` arrays of `{document_id, amount}`, optional `notes`, and an optional reusable `idempotency_key`.
+
+Expenses are listed, retrieved, and posted at `/api/v1/expenses/`. Creation accepts `expense_date`, `expense_account`, optional `payee`, `settlement` (`paid` or `payable`), an immediate `payment_account` when applicable, `amount`, `description`, optional `external_reference`, and an optional idempotency key. Outstanding expense payables accept `POST /api/v1/expenses/{id}/pay/` with `payment_date`, `payment_account`, `amount`, optional `notes`, and an optional idempotency key.
+
 Returns, multi-invoice payment splitting, advanced financial reports, and the optional React client remain roadmap work rather than claims about this foundation.
 
 ## Current user interface
 
-The authenticated Django interface is the operational delivery surface for the implemented foundation. It includes a responsive permission-aware navigation shell, business switching, overview metrics, searchable and paginated contacts/catalog tables, append-only stock movement entry, sales and purchase workflows, and accounting workflows for chart templates, tenant accounts, editable fiscal periods, draft journals, posting, and vouchers. The top-level **Payments** workspace lists open customer receivables and supplier payables with direct **Receive** and **Pay** actions plus recent settlement history. The **Reports** area provides filtered contact directories, posted invoice registers with paid and outstanding balances, and money receipt registers on screen and as CSV/PDF, with individual printable invoice and receipt documents. Accounts Receivable collections produce receipt PDFs; Accounts Payable settlements produce printable payment vouchers. Open period boundaries may be changed only when they remain non-overlapping and include every existing entry; locked boundaries remain protected until the period is reopened.
+The authenticated Django interface is the operational delivery surface for the implemented foundation. It includes a responsive permission-aware navigation shell, business switching, overview metrics, searchable and paginated contacts/catalog tables, append-only stock movement entry, sales and purchase workflows, and accounting workflows for chart templates, tenant accounts, editable fiscal periods, draft journals, posting, and vouchers. The top-level **Payments** workspace lists open customer receivables and supplier payables with direct **Receive** and **Pay** actions plus recent settlement history. The **Reports** area provides contact directories with opening and reporting-date closing balances, posted invoice and money receipt registers, and a complete account activity/trial balance for any selected date range; each tabular report supports CSV and furnished PDF export. Accounts Receivable collections produce receipt PDFs; Accounts Payable settlements produce printable payment vouchers. Open period boundaries may be changed only when they remain non-overlapping and include every existing entry; locked boundaries remain protected until the period is reopened.
 
 Sales and purchases are available at `/sales/` and `/purchases/`. Users can filter registers by state and date, save editable automatically numbered drafts, add split lines, review posting accounts, confirm posting, follow the resulting journal, and export documents or filtered registers as PDF/CSV. The stock movement register also supports number/source search, date and direction filters, and PDF/CSV export.
 

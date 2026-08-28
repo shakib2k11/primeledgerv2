@@ -17,6 +17,8 @@ from reportlab.pdfgen import canvas
 
 from accounting.models import MoneyReceipt
 from core.application.services import (
+    ACCOUNTING_POST,
+    ACCOUNTING_VIEW,
     PURCHASES_MANAGE,
     PURCHASES_POST,
     PURCHASES_VIEW,
@@ -46,25 +48,37 @@ from core.pdf import (
 from core.views import authorize, is_authorized, request_business
 from core.infrastructure.numbering import allocate_reference_number
 from operations.application.services import (
+    CreateBalanceSetoffCommand,
     PayPurchaseCommand,
     PostTradeDocumentCommand,
     ReceiveSalePaymentCommand,
+    SetoffAllocationCommand,
+    create_balance_setoff,
     pay_purchase,
     post_trade_document,
     receive_sale_payment,
 )
 from operations.forms import (
+    BalanceSetoffForm,
     PayPurchaseForm,
     ReceiveSalePaymentForm,
     TradeDocumentForm,
     TradeLineFormSet,
 )
 from operations.infrastructure.repositories import (
+    DjangoBalanceSetoffRepository,
     DjangoPurchasePaymentRepository,
     DjangoSalePaymentRepository,
     DjangoTradeDocumentRepository,
 )
-from operations.models import PurchasePayment, SalePayment, TradeDocument
+from operations.models import (
+    BalanceSetoff,
+    PurchasePayment,
+    PurchaseSetoffAllocation,
+    SalePayment,
+    SaleSetoffAllocation,
+    TradeDocument,
+)
 
 
 def permissions_for(kind):
@@ -225,6 +239,18 @@ def document_detail(request, kind, pk):
                     "payment_account", "voucher", "journal_entry", "paid_by"
                 ),
             ),
+            Prefetch(
+                "sale_setoff_allocations",
+                queryset=SaleSetoffAllocation.objects.select_related(
+                    "setoff__voucher", "setoff__journal_entry"
+                ),
+            ),
+            Prefetch(
+                "purchase_setoff_allocations",
+                queryset=PurchaseSetoffAllocation.objects.select_related(
+                    "setoff__voucher", "setoff__journal_entry"
+                ),
+            ),
         ),
         business=business, kind=kind, pk=pk,
     )
@@ -245,6 +271,11 @@ def document_detail(request, kind, pk):
             document.payments.all()
             if kind == TradeDocument.Kind.SALE
             else document.supplier_payments.all()
+        ),
+        "setoff_allocations": (
+            document.sale_setoff_allocations.all()
+            if kind == TradeDocument.Kind.SALE
+            else document.purchase_setoff_allocations.all()
         ),
         "paid_amount": document.paid_amount,
         "balance_due": document.balance_due,
@@ -415,7 +446,9 @@ def payment_center(request):
             kind=TradeDocument.Kind.SALE,
             status=TradeDocument.Status.POSTED,
             debit_account__system_role="accounts_receivable",
-        ).select_related("party", "debit_account").prefetch_related("payments")
+        ).select_related("party", "debit_account").prefetch_related(
+            "payments", "sale_setoff_allocations"
+        )
         if query:
             receivable_query = receivable_query.filter(
                 Q(number__icontains=query) | Q(party__name__icontains=query)
@@ -426,7 +459,9 @@ def payment_center(request):
             kind=TradeDocument.Kind.PURCHASE,
             status=TradeDocument.Status.POSTED,
             credit_account__system_role="accounts_payable",
-        ).select_related("party", "credit_account").prefetch_related("supplier_payments")
+        ).select_related("party", "credit_account").prefetch_related(
+            "supplier_payments", "purchase_setoff_allocations"
+        )
         if query:
             payable_query = payable_query.filter(
                 Q(number__icontains=query) | Q(party__name__icontains=query)
@@ -448,6 +483,53 @@ def payment_center(request):
         if can_view_purchases
         else PurchasePayment.objects.none()
     )
+    can_setoff = (
+        can_view_sales
+        and can_view_purchases
+        and is_authorized(request.user, business, SALES_POST)
+        and is_authorized(request.user, business, PURCHASES_POST)
+        and is_authorized(request.user, business, ACCOUNTING_POST)
+    )
+    setoff_options = []
+    if can_view_sales and can_view_purchases:
+        receivable_by_party = {}
+        payable_by_party = {}
+        parties = {}
+        for document in receivables:
+            parties[document.party_id] = document.party
+            receivable_by_party[document.party_id] = (
+                receivable_by_party.get(document.party_id, Decimal("0.00"))
+                + document.balance_due
+            )
+        for document in payables:
+            parties[document.party_id] = document.party
+            payable_by_party[document.party_id] = (
+                payable_by_party.get(document.party_id, Decimal("0.00"))
+                + document.balance_due
+            )
+        for party_id in sorted(
+            set(receivable_by_party).intersection(payable_by_party),
+            key=lambda item: parties[item].name.lower(),
+        ):
+            party = parties[party_id]
+            if party.kind != party.Kind.BOTH:
+                continue
+            receivable = receivable_by_party[party_id]
+            payable = payable_by_party[party_id]
+            setoff_options.append({
+                "party": party,
+                "receivable": receivable,
+                "payable": payable,
+                "available": min(receivable, payable),
+            })
+    recent_setoffs = (
+        BalanceSetoff.objects.filter(business=business)
+        .select_related("party", "voucher")[:10]
+        if can_view_sales
+        and can_view_purchases
+        and is_authorized(request.user, business, ACCOUNTING_VIEW)
+        else BalanceSetoff.objects.none()
+    )
     return render(request, "operations/payment-center.html", {
         "business": business,
         "query": query,
@@ -463,7 +545,228 @@ def payment_center(request):
         "disbursements": disbursements,
         "show_receivables": can_view_sales,
         "show_payables": can_view_purchases,
+        "can_setoff": can_setoff,
+        "setoff_options": setoff_options,
+        "recent_setoffs": recent_setoffs,
     })
+
+
+def _open_setoff_documents(business, party):
+    sales = list(
+        TradeDocument.objects.filter(
+            business=business,
+            party=party,
+            kind=TradeDocument.Kind.SALE,
+            status=TradeDocument.Status.POSTED,
+            debit_account__system_role="accounts_receivable",
+        )
+        .select_related("party", "debit_account")
+        .prefetch_related("payments", "sale_setoff_allocations")
+        .order_by("document_date", "id")
+    )
+    purchases = list(
+        TradeDocument.objects.filter(
+            business=business,
+            party=party,
+            kind=TradeDocument.Kind.PURCHASE,
+            status=TradeDocument.Status.POSTED,
+            credit_account__system_role="accounts_payable",
+        )
+        .select_related("party", "credit_account")
+        .prefetch_related("supplier_payments", "purchase_setoff_allocations")
+        .order_by("document_date", "id")
+    )
+    return (
+        [document for document in sales if document.balance_due > 0],
+        [document for document in purchases if document.balance_due > 0],
+    )
+
+
+@login_required
+def balance_setoff_create(request, party_id):
+    business = request_business(request)
+    if business is None:
+        return render(request, "core/no-business.html")
+    for permission in (SALES_POST, PURCHASES_POST, ACCOUNTING_POST):
+        authorize(request.user, business, permission)
+    party = get_object_or_404(
+        business.parties.filter(is_active=True, kind="both"), pk=party_id
+    )
+    sales, purchases = _open_setoff_documents(business, party)
+    if not sales or not purchases:
+        messages.error(
+            request,
+            "This contact needs both an open receivable and an open payable before a set-off can be posted.",
+        )
+        return redirect("payment-center")
+    form = BalanceSetoffForm(
+        request.POST or None,
+        sales=sales,
+        purchases=purchases,
+    )
+    if request.method == "POST" and form.is_valid():
+        try:
+            setoff = create_balance_setoff(
+                CreateBalanceSetoffCommand(
+                    business_id=business.pk,
+                    party_id=party.pk,
+                    setoff_date=form.cleaned_data["setoff_date"],
+                    sale_allocations=tuple(
+                        SetoffAllocationCommand(document_id=pk, amount=amount)
+                        for pk, amount in form.cleaned_data["sale_allocations"]
+                    ),
+                    purchase_allocations=tuple(
+                        SetoffAllocationCommand(document_id=pk, amount=amount)
+                        for pk, amount in form.cleaned_data["purchase_allocations"]
+                    ),
+                    idempotency_key=form.cleaned_data["idempotency_key"],
+                    notes=form.cleaned_data["notes"],
+                    user_id=request.user.pk,
+                ),
+                DjangoBalanceSetoffRepository(),
+            )
+        except (ValidationError, IntegrityError) as exc:
+            detail = (
+                " ".join(exc.messages)
+                if isinstance(exc, ValidationError)
+                else "The set-off could not be posted because a financial reference already exists."
+            )
+            form.add_error(None, detail)
+        else:
+            messages.success(
+                request,
+                f"Set-off {setoff.number} posted with contra voucher {setoff.voucher.number}.",
+            )
+            return redirect("balance-setoff-detail", pk=setoff.pk)
+    return render(request, "operations/balance-setoff-form.html", {
+        "business": business,
+        "party": party,
+        "sales": sales,
+        "purchases": purchases,
+        "form": form,
+    })
+
+
+@login_required
+def balance_setoff_detail(request, pk):
+    business = request_business(request)
+    if business is None:
+        return render(request, "core/no-business.html")
+    authorize(request.user, business, ACCOUNTING_VIEW)
+    setoff = get_object_or_404(
+        BalanceSetoff.objects.select_related(
+            "party", "voucher", "journal_entry", "created_by"
+        ).prefetch_related(
+            "sale_allocations__sale", "purchase_allocations__purchase"
+        ),
+        business=business,
+        pk=pk,
+    )
+    return render(request, "operations/balance-setoff-detail.html", {
+        "business": business,
+        "setoff": setoff,
+    })
+
+
+@login_required
+def balance_setoff_pdf(request, pk):
+    business = request_business(request)
+    if business is None:
+        return render(request, "core/no-business.html")
+    authorize(request.user, business, ACCOUNTING_VIEW)
+    setoff = get_object_or_404(
+        BalanceSetoff.objects.select_related(
+            "party", "voucher", "journal_entry", "created_by"
+        ).prefetch_related(
+            "sale_allocations__sale", "purchase_allocations__purchase"
+        ),
+        business=business,
+        pk=pk,
+    )
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
+    width, _ = A4
+    pdf.setTitle(f"Balance set-off {setoff.number}")
+    pdf.setAuthor("Prime Ledger")
+    width, _, y = draw_document_header(
+        pdf,
+        business,
+        "Balance set-off statement",
+        setoff.number,
+        setoff.setoff_date,
+        status="Posted",
+    )
+    pdf.setFillColor(SURFACE_SUBTLE)
+    pdf.setStrokeColor(BORDER)
+    pdf.roundRect(PAGE_MARGIN, y - 64, width - (2 * PAGE_MARGIN), 70, 5, stroke=1, fill=1)
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawString(PAGE_MARGIN + 14, y - 14, "CUSTOMER & SUPPLIER")
+    pdf.setFillColor(INK)
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(PAGE_MARGIN + 14, y - 35, clean_text(setoff.party.name, 55))
+    pdf.setFillColor(TEAL)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawRightString(width - PAGE_MARGIN - 14, y - 14, "SET-OFF AMOUNT")
+    pdf.setFillColor(INK)
+    pdf.setFont("Helvetica-Bold", 18)
+    pdf.drawRightString(
+        width - PAGE_MARGIN - 14,
+        y - 41,
+        f"{business.currency} {setoff.total_amount:,.2f}",
+    )
+    y -= 86
+
+    def allocation_table(title, allocations, document_attr):
+        nonlocal y
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica-Bold", 7)
+        pdf.drawString(PAGE_MARGIN, y, title.upper())
+        y -= 18
+        columns = [
+            (PAGE_MARGIN + 8, "Document", "left"),
+            (PAGE_MARGIN + 220, "Date", "left"),
+            (width - PAGE_MARGIN - 8, "Allocated", "right"),
+        ]
+        draw_table_header(pdf, y, columns, width=width)
+        y -= 22
+        for index, allocation in enumerate(allocations):
+            document = getattr(allocation, document_attr)
+            draw_table_row_background(pdf, y, width=width, row_index=index)
+            pdf.setFillColor(INK)
+            pdf.setFont("Helvetica-Bold", 8)
+            pdf.drawString(PAGE_MARGIN + 8, y, document.number)
+            pdf.setFillColor(INK_SOFT)
+            pdf.setFont("Helvetica", 8)
+            pdf.drawString(PAGE_MARGIN + 220, y, document.document_date.strftime("%d %b %Y"))
+            pdf.setFillColor(INK)
+            pdf.setFont("Helvetica-Bold", 8)
+            pdf.drawRightString(width - PAGE_MARGIN - 8, y, f"{allocation.amount:,.2f}")
+            y -= 22
+        y -= 15
+
+    allocation_table("Receivable invoices cleared", setoff.sale_allocations.all(), "sale")
+    allocation_table("Payable purchases cleared", setoff.purchase_allocations.all(), "purchase")
+    pdf.setStrokeColor(BORDER_STRONG)
+    pdf.line(PAGE_MARGIN, y, width - PAGE_MARGIN, y)
+    y -= 18
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica", 8)
+    pdf.drawString(PAGE_MARGIN, y, f"Contra voucher: {setoff.voucher.number}")
+    pdf.drawRightString(width - PAGE_MARGIN, y, f"Journal: {setoff.journal_entry.reference}")
+    y -= 30
+    pdf.setFillColor(INK_SOFT)
+    pdf.setFont("Helvetica", 8)
+    pdf.drawString(PAGE_MARGIN, y, "Accounting effect: Debit Accounts Payable / Credit Accounts Receivable")
+    draw_page_footer(pdf, width=width, page_number=1)
+    pdf.save()
+    return HttpResponse(
+        buffer.getvalue(),
+        content_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="balance-setoff-{setoff.number}.pdf"'
+        },
+    )
 
 
 @login_required

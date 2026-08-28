@@ -4,6 +4,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from operations.domain.repositories import (
+    BalanceSetoffRepository,
     PurchasePaymentRepository,
     SalePaymentRepository,
     TradeDocumentRepository,
@@ -74,6 +75,40 @@ def pay_purchase(
         payment_account_id=command.payment_account_id,
         amount=command.amount,
         payment_date=command.payment_date,
+        idempotency_key=command.idempotency_key,
+        notes=command.notes,
+        user_id=command.user_id,
+    )
+
+
+@dataclass(frozen=True)
+class SetoffAllocationCommand:
+    document_id: int
+    amount: Decimal
+
+
+@dataclass(frozen=True)
+class CreateBalanceSetoffCommand:
+    business_id: int
+    party_id: int
+    setoff_date: date
+    sale_allocations: tuple[SetoffAllocationCommand, ...]
+    purchase_allocations: tuple[SetoffAllocationCommand, ...]
+    idempotency_key: UUID
+    notes: str = ""
+    user_id: int | None = None
+
+
+def create_balance_setoff(
+    command: CreateBalanceSetoffCommand,
+    repository: BalanceSetoffRepository,
+):
+    return repository.create(
+        business_id=command.business_id,
+        party_id=command.party_id,
+        setoff_date=command.setoff_date,
+        sale_allocations=command.sale_allocations,
+        purchase_allocations=command.purchase_allocations,
         idempotency_key=command.idempotency_key,
         notes=command.notes,
         user_id=command.user_id,

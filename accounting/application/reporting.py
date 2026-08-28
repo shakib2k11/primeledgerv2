@@ -27,10 +27,31 @@ class AccountActivityTotals:
     closing_credit: Decimal = ZERO
 
 
+@dataclass(frozen=True)
+class ContactClosingBalance:
+    amount: Decimal
+    position: str
+
+
 def _split_balance(value: Decimal) -> tuple[Decimal, Decimal]:
     if value >= ZERO:
         return value, ZERO
     return ZERO, -value
+
+
+def calculate_contact_closing_balance(
+    opening_amount: Decimal,
+    opening_is_payable: bool,
+    posted_debit: Decimal,
+    posted_credit: Decimal,
+) -> ContactClosingBalance:
+    opening_signed = -opening_amount if opening_is_payable else opening_amount
+    closing_signed = opening_signed + posted_debit - posted_credit
+    if closing_signed > ZERO:
+        return ContactClosingBalance(closing_signed, "Receivable")
+    if closing_signed < ZERO:
+        return ContactClosingBalance(-closing_signed, "Payable")
+    return ContactClosingBalance(ZERO, "Settled")
 
 
 def build_account_activity(

@@ -1,28 +1,45 @@
+import csv
+from decimal import Decimal
+from io import BytesIO
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 from accounting.forms import (
     AccountForm,
+    ExpensePaymentForm,
+    ExpenseRecordForm,
     FiscalPeriodForm,
     JournalEntryForm,
     JournalLineFormSet,
     VoucherForm,
 )
-from accounting.models import Account, FiscalPeriod, JournalEntry, Voucher
+from accounting.models import (
+    Account, ExpensePayment, ExpenseRecord, FiscalPeriod, JournalEntry, Voucher,
+)
 from accounting.models import ChartOfAccountsTemplate
 from accounting.application.services import (
     ApplyAccountTemplateCommand,
     CreateMoneyReceiptCommand,
+    CreateExpenseCommand,
+    PayExpenseCommand,
     apply_account_template,
+    create_expense,
     create_money_receipt,
+    pay_expense,
 )
 from accounting.infrastructure.repositories import (
     DjangoAccountTemplateRepository,
+    DjangoExpensePaymentRepository,
+    DjangoExpenseRepository,
     DjangoMoneyReceiptRepository,
 )
 from core.application.services import (
@@ -34,6 +51,11 @@ from core.application.services import (
 )
 from core.infrastructure.repositories import DjangoJournalRepository
 from core.views import authorize, request_business
+from core.pdf import (
+    BORDER, INK, INK_SOFT, MUTED, PAGE_MARGIN, SURFACE_SUBTLE, TEAL,
+    clean_text, draw_document_header, draw_empty_state, draw_page_footer,
+    draw_report_header, draw_table_header, draw_table_row_background,
+)
 
 
 def accounting_context(request, permission):
@@ -365,3 +387,341 @@ def voucher_create(request):
         "eyebrow": "Financial documents", "description": "Create an immutable voucher from an unassigned posted journal entry.",
         "cancel_url": "voucher-list", "submit_label": "Create voucher",
     })
+
+
+def _expense_queryset(business):
+    return ExpenseRecord.objects.filter(business=business).select_related(
+        "payee", "expense_account", "payment_account", "payable_account",
+        "journal_entry", "voucher", "created_by",
+    ).prefetch_related("payments__payment_account", "payments__voucher")
+
+
+def _filtered_expenses(request, business):
+    expenses = _expense_queryset(business)
+    query = request.GET.get("q", "").strip()
+    category = request.GET.get("category", "")
+    status_filter = request.GET.get("status", "")
+    date_from = request.GET.get("date_from", "")
+    date_to = request.GET.get("date_to", "")
+    if query:
+        expenses = expenses.filter(
+            Q(number__icontains=query)
+            | Q(description__icontains=query)
+            | Q(payee__name__icontains=query)
+            | Q(external_reference__icontains=query)
+        )
+    if category.isdigit():
+        expenses = expenses.filter(expense_account_id=category)
+    if date_from:
+        expenses = expenses.filter(expense_date__gte=date_from)
+    if date_to:
+        expenses = expenses.filter(expense_date__lte=date_to)
+    rows = list(expenses)
+    if status_filter in {"paid", "partial", "unpaid"}:
+        rows = [row for row in rows if row.payment_status == status_filter]
+    return rows, {
+        "query": query, "category": category, "status_filter": status_filter,
+        "date_from": date_from, "date_to": date_to,
+    }
+
+
+@login_required
+def expense_list(request):
+    business = accounting_context(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    rows, filters = _filtered_expenses(request, business)
+    page = Paginator(rows, 30).get_page(request.GET.get("page"))
+    return render(request, "accounting/expense-list.html", {
+        "business": business,
+        "expenses": page,
+        "page_obj": page,
+        "categories": Account.objects.filter(
+            business=business, is_active=True, account_type=Account.Type.EXPENSE
+        ).order_by("code"),
+        "expense_total": sum((row.amount for row in rows), Decimal("0.00")),
+        "paid_total": sum((row.paid_amount for row in rows), Decimal("0.00")),
+        "outstanding_total": sum((row.balance_due for row in rows), Decimal("0.00")),
+        **filters,
+    })
+
+
+@login_required
+def expense_create(request):
+    business = accounting_context(request, ACCOUNTING_POST)
+    if business is None:
+        return render(request, "core/no-business.html")
+    form = ExpenseRecordForm(request.POST or None, business=business)
+    if request.method == "POST" and form.is_valid():
+        values = form.cleaned_data
+        try:
+            expense = create_expense(
+                CreateExpenseCommand(
+                    business_id=business.pk,
+                    expense_date=values["expense_date"],
+                    expense_account_id=values["expense_account"].pk,
+                    settlement=values["settlement"],
+                    amount=values["amount"],
+                    description=values["description"],
+                    idempotency_key=values["idempotency_key"],
+                    payee_id=values["payee"].pk if values.get("payee") else None,
+                    payment_account_id=(
+                        values["payment_account"].pk
+                        if values.get("payment_account") else None
+                    ),
+                    external_reference=values["external_reference"],
+                    user_id=request.user.pk,
+                ),
+                DjangoExpenseRepository(),
+            )
+        except (ValidationError, IntegrityError) as exc:
+            detail = (
+                " ".join(exc.messages) if isinstance(exc, ValidationError)
+                else "The expense could not be posted because a financial reference already exists."
+            )
+            form.add_error(None, detail)
+        else:
+            messages.success(
+                request, f"Expense {expense.number} posted with voucher {expense.voucher.number}."
+            )
+            return redirect("expense-detail", pk=expense.pk)
+    return render(request, "accounting/expense-form.html", {
+        "business": business, "form": form,
+    })
+
+
+@login_required
+def expense_detail(request, pk):
+    business = accounting_context(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    expense = get_object_or_404(_expense_queryset(business), pk=pk)
+    return render(request, "accounting/expense-detail.html", {
+        "business": business, "expense": expense,
+    })
+
+
+@login_required
+def expense_pay(request, pk):
+    business = accounting_context(request, ACCOUNTING_POST)
+    if business is None:
+        return render(request, "core/no-business.html")
+    expense = get_object_or_404(_expense_queryset(business), pk=pk)
+    if not expense.can_pay:
+        messages.error(request, "This expense has no outstanding payable balance.")
+        return redirect("expense-detail", pk=pk)
+    form = ExpensePaymentForm(
+        request.POST or None, business=business, expense=expense
+    )
+    if request.method == "POST" and form.is_valid():
+        values = form.cleaned_data
+        try:
+            payment = pay_expense(
+                PayExpenseCommand(
+                    expense_id=expense.pk,
+                    business_id=business.pk,
+                    payment_account_id=values["payment_account"].pk,
+                    amount=values["amount"],
+                    payment_date=values["payment_date"],
+                    idempotency_key=values["idempotency_key"],
+                    notes=values["notes"],
+                    user_id=request.user.pk,
+                ),
+                DjangoExpensePaymentRepository(),
+            )
+        except (ValidationError, IntegrityError) as exc:
+            detail = (
+                " ".join(exc.messages) if isinstance(exc, ValidationError)
+                else "The payment could not be posted because a financial reference already exists."
+            )
+            form.add_error(None, detail)
+        else:
+            messages.success(
+                request, f"Payment {payment.number} posted with voucher {payment.voucher.number}."
+            )
+            return redirect("expense-detail", pk=expense.pk)
+    return render(request, "accounting/expense-payment-form.html", {
+        "business": business, "expense": expense, "form": form,
+    })
+
+
+@login_required
+def expense_csv(request):
+    business = accounting_context(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    rows, _ = _filtered_expenses(request, business)
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="expense-register.csv"'
+    writer = csv.writer(response)
+    writer.writerow([business.name, "Expense register", business.currency])
+    writer.writerow([
+        "Number", "Date", "Category", "Description", "Payee", "Reference",
+        "Settlement", "Amount", "Paid", "Outstanding", "Status",
+    ])
+    for expense in rows:
+        writer.writerow([
+            expense.number, expense.expense_date, expense.expense_account.name,
+            expense.description, expense.payee.name if expense.payee else "",
+            expense.external_reference, expense.get_settlement_display(), expense.amount,
+            expense.paid_amount, expense.balance_due, expense.payment_status,
+        ])
+    return response
+
+
+@login_required
+def expense_report_pdf(request):
+    business = accounting_context(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    rows, filters = _filtered_expenses(request, business)
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
+    width, height = A4
+    page_number = 1
+
+    def page_header():
+        _, _, header_y = draw_report_header(
+            pdf, business, "Expense register",
+            page_number=page_number,
+            metadata=[
+                ("From", filters["date_from"] or "Beginning"),
+                ("To", filters["date_to"] or "Today"),
+                ("Currency", business.currency),
+            ],
+        )
+        return header_y
+
+    y = page_header()
+    columns = [
+        (PAGE_MARGIN + 7, "Expense", "left"),
+        (PAGE_MARGIN + 82, "Date", "left"),
+        (PAGE_MARGIN + 150, "Category / payee", "left"),
+        (width - PAGE_MARGIN - 110, "Amount", "right"),
+        (width - PAGE_MARGIN - 7, "Outstanding", "right"),
+    ]
+    y = draw_table_header(pdf, y, columns, width=width)
+    if not rows:
+        y = draw_empty_state(pdf, y, "No expenses matched the selected filters.", width=width)
+    for index, expense in enumerate(rows):
+        if y < 70:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            y = page_header()
+            y = draw_table_header(pdf, y, columns, width=width)
+        draw_table_row_background(pdf, y, width=width, row_index=index, height=26)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.5)
+        pdf.drawString(PAGE_MARGIN + 7, y + 2, expense.number)
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7)
+        pdf.drawString(PAGE_MARGIN + 82, y + 2, expense.expense_date.strftime("%d %b %Y"))
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.2)
+        pdf.drawString(PAGE_MARGIN + 150, y + 4, clean_text(expense.expense_account.name, 34))
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica", 6.6)
+        pdf.drawString(
+            PAGE_MARGIN + 150, y - 6,
+            clean_text(expense.payee.name if expense.payee else expense.description, 42),
+        )
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.5)
+        pdf.drawRightString(width - PAGE_MARGIN - 110, y + 2, f"{expense.amount:,.2f}")
+        pdf.drawRightString(width - PAGE_MARGIN - 7, y + 2, f"{expense.balance_due:,.2f}")
+        y -= 27
+    draw_page_footer(pdf, width=width, page_number=page_number)
+    pdf.save()
+    return HttpResponse(
+        buffer.getvalue(), content_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="expense-register.pdf"'},
+    )
+
+
+def _expense_document_response(business, title, number, document_date, payee, amount, rows):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
+    width, _ = A4
+    pdf.setTitle(f"{title} {number}")
+    width, _, y = draw_document_header(
+        pdf, business, title, number, document_date, status="Posted"
+    )
+    pdf.setFillColor(SURFACE_SUBTLE)
+    pdf.setStrokeColor(BORDER)
+    pdf.roundRect(PAGE_MARGIN, y - 64, width - (2 * PAGE_MARGIN), 70, 5, stroke=1, fill=1)
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawString(PAGE_MARGIN + 14, y - 14, "PAID / PAYABLE TO")
+    pdf.setFillColor(INK)
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(PAGE_MARGIN + 14, y - 36, clean_text(payee or "Not specified", 58))
+    pdf.setFillColor(TEAL)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawRightString(width - PAGE_MARGIN - 14, y - 14, "AMOUNT")
+    pdf.setFillColor(INK)
+    pdf.setFont("Helvetica-Bold", 19)
+    pdf.drawRightString(width - PAGE_MARGIN - 14, y - 41, f"{business.currency} {amount:,.2f}")
+    y -= 94
+    for label, value in rows:
+        pdf.setStrokeColor(BORDER)
+        pdf.line(PAGE_MARGIN, y - 8, width - PAGE_MARGIN, y - 8)
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica", 8)
+        pdf.drawString(PAGE_MARGIN, y, label)
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica-Bold", 8)
+        pdf.drawRightString(width - PAGE_MARGIN, y, clean_text(value, 70))
+        y -= 26
+    draw_page_footer(pdf, width=width, page_number=1)
+    pdf.save()
+    return HttpResponse(
+        buffer.getvalue(), content_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{number}.pdf"'},
+    )
+
+
+@login_required
+def expense_pdf(request, pk):
+    business = accounting_context(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    expense = get_object_or_404(_expense_queryset(business), pk=pk)
+    return _expense_document_response(
+        business, "Expense voucher", expense.voucher.number, expense.expense_date,
+        expense.payee.name if expense.payee else None, expense.amount,
+        [
+            ("Expense category", str(expense.expense_account)),
+            ("Description", expense.description),
+            ("Settlement", expense.get_settlement_display()),
+            ("Paid from / liability", str(expense.payment_account or expense.payable_account)),
+            ("External reference", expense.external_reference or "—"),
+            ("Journal reference", expense.journal_entry.reference),
+        ],
+    )
+
+
+@login_required
+def expense_payment_pdf(request, pk):
+    business = accounting_context(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    payment = get_object_or_404(
+        ExpensePayment.objects.select_related(
+            "expense__payee", "payment_account", "voucher", "journal_entry"
+        ), business=business, pk=pk,
+    )
+    return _expense_document_response(
+        business, "Expense payment voucher", payment.voucher.number,
+        payment.payment_date, payment.expense.payee.name, payment.amount,
+        [
+            ("Expense", f"{payment.expense.number} — {payment.expense.description}"),
+            ("Paid from", str(payment.payment_account)),
+            ("Allocation", payment.number),
+            ("Journal reference", payment.journal_entry.reference),
+            ("Notes", payment.notes or "—"),
+        ],
+    )
+import csv
+from decimal import Decimal
+from io import BytesIO

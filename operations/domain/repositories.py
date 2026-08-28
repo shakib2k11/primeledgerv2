@@ -36,3 +36,19 @@ class PurchasePaymentRepository(Protocol):
         user_id: int | None = None,
     ) -> Any:
         ...
+
+
+class BalanceSetoffRepository(Protocol):
+    def create(
+        self,
+        *,
+        business_id: int,
+        party_id: int,
+        setoff_date: Any,
+        sale_allocations: Any,
+        purchase_allocations: Any,
+        idempotency_key: Any,
+        notes: str = "",
+        user_id: int | None = None,
+    ) -> Any:
+        ...

@@ -89,6 +89,12 @@
     {% endif %}
   </aside>
 </section>
+{% if setoff_allocations %}
+<section class="panel data-panel payment-history-panel">
+  <div class="table-panel-heading"><div><span class="overline">Contra settlement</span><h2>Balance set-offs</h2></div></div>
+  <div class="table-wrap"><table><thead><tr><th>Set-off</th><th>Date</th><th>Contact</th><th class="numeric">Allocated</th><th></th></tr></thead><tbody>{% for allocation in setoff_allocations %}<tr><td><strong>{{ allocation.setoff.number }}</strong><small>{{ allocation.setoff.voucher.number }}</small></td><td>{{ allocation.setoff.setoff_date|date:"d M Y" }}</td><td>{{ document.party.name }}</td><td class="numeric money">{{ allocation.amount|floatformat:2 }}</td><td class="action-cell"><a class="text-link" href="{% url 'balance-setoff-detail' allocation.setoff.pk %}">View contra</a></td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
 {% if document.status == 'posted' and is_credit_sale or document.status == 'posted' and is_credit_purchase %}
 <section class="panel data-panel payment-history-panel">
   <div class="table-panel-heading"><span class="overline">{% if kind == 'sale' %}Customer settlement{% else %}Supplier settlement{% endif %}</span><h2>Payment history</h2></div>

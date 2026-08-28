@@ -13,3 +13,11 @@ class MoneyReceiptRepository(Protocol):
         preferred_number: str,
         payment_account_id: int | None = None,
     ): ...
+
+
+class ExpenseRepository(Protocol):
+    def create(self, **kwargs): ...
+
+
+class ExpensePaymentRepository(Protocol):
+    def pay(self, **kwargs): ...

@@ -150,7 +150,18 @@ class TradeDocument(models.Model):
             if self.kind == self.Kind.SALE
             else self.supplier_payments.all()
         )
-        return sum((payment.amount for payment in related_payments), Decimal("0.00"))
+        setoff_allocations = (
+            self.sale_setoff_allocations.all()
+            if self.kind == self.Kind.SALE
+            else self.purchase_setoff_allocations.all()
+        )
+        return sum(
+            (payment.amount for payment in related_payments),
+            Decimal("0.00"),
+        ) + sum(
+            (allocation.amount for allocation in setoff_allocations),
+            Decimal("0.00"),
+        )
 
     @property
     def balance_due(self):
@@ -484,3 +495,207 @@ class PurchasePayment(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Posted supplier payments cannot be deleted.")
+
+
+class BalanceSetoff(models.Model):
+    business = models.ForeignKey(
+        Business,
+        on_delete=models.CASCADE,
+        related_name="balance_setoffs",
+    )
+    party = models.ForeignKey(
+        Party,
+        on_delete=models.PROTECT,
+        related_name="balance_setoffs",
+    )
+    number = models.CharField(max_length=8)
+    setoff_date = models.DateField()
+    total_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    journal_entry = models.OneToOneField(
+        JournalEntry,
+        on_delete=models.PROTECT,
+        related_name="balance_setoff",
+    )
+    voucher = models.OneToOneField(
+        Voucher,
+        on_delete=models.PROTECT,
+        related_name="balance_setoff",
+    )
+    notes = models.TextField(blank=True)
+    idempotency_key = models.UUIDField(default=uuid.uuid4)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="balance_setoffs_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "number"],
+                name="unique_business_balance_setoff_number",
+            ),
+            models.UniqueConstraint(
+                fields=["business", "idempotency_key"],
+                name="unique_business_balance_setoff_idempotency",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(number__regex=r"^[0-9]{8}$"),
+                name="balance_setoff_number_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(total_amount__gt=0),
+                name="balance_setoff_positive_total",
+            ),
+        ]
+        ordering = ["-setoff_date", "-id"]
+
+    def __str__(self):
+        return f"{self.number} — {self.party.name} ({self.total_amount:.2f})"
+
+    def clean(self):
+        if self.number and (len(self.number) != 8 or not self.number.isdigit()):
+            raise ValidationError({
+                "number": "The set-off number must contain exactly eight digits."
+            })
+        for field in ("party", "journal_entry", "voucher"):
+            value = getattr(self, field, None)
+            if value and value.business_id != self.business_id:
+                raise ValidationError(
+                    f"Set-off {field.replace('_', ' ')} must belong to the same business."
+                )
+        if self.party_id and self.party.kind != Party.Kind.BOTH:
+            raise ValidationError(
+                "Balance set-off requires a contact classified as Customer and Supplier."
+            )
+        if self.journal_entry_id and not self.journal_entry.posted:
+            raise ValidationError("A balance set-off requires a posted journal entry.")
+        if self.voucher_id:
+            if self.voucher.voucher_type != Voucher.Type.CONTRA:
+                raise ValidationError("Balance set-off requires a contra voucher.")
+            if self.voucher.total != self.total_amount:
+                raise ValidationError("Set-off and voucher totals must match.")
+            if self.voucher.party_id != self.party_id:
+                raise ValidationError("Set-off and voucher contacts must match.")
+            if self.voucher.voucher_date != self.setoff_date:
+                raise ValidationError("Set-off and voucher dates must match.")
+            if self.voucher.journal_entry_id != self.journal_entry_id:
+                raise ValidationError("Contra voucher must use the set-off journal entry.")
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Posted balance set-offs cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Posted balance set-offs cannot be deleted.")
+
+
+class SaleSetoffAllocation(models.Model):
+    setoff = models.ForeignKey(
+        BalanceSetoff,
+        on_delete=models.PROTECT,
+        related_name="sale_allocations",
+    )
+    sale = models.ForeignKey(
+        TradeDocument,
+        on_delete=models.PROTECT,
+        related_name="sale_setoff_allocations",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["setoff", "sale"],
+                name="unique_setoff_sale_allocation",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="sale_setoff_allocation_positive",
+            ),
+        ]
+
+    def clean(self):
+        if self.setoff_id and self.sale_id:
+            if self.sale.business_id != self.setoff.business_id:
+                raise ValidationError("Allocated sale must belong to the set-off business.")
+            if self.sale.party_id != self.setoff.party_id:
+                raise ValidationError("Allocated sale must belong to the set-off contact.")
+            if (
+                self.sale.kind != TradeDocument.Kind.SALE
+                or self.sale.status != TradeDocument.Status.POSTED
+                or self.sale.debit_account.system_role
+                != Account.SystemRole.ACCOUNTS_RECEIVABLE
+            ):
+                raise ValidationError("Set-off requires a posted Accounts Receivable sale.")
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Set-off allocations cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Set-off allocations cannot be deleted.")
+
+
+class PurchaseSetoffAllocation(models.Model):
+    setoff = models.ForeignKey(
+        BalanceSetoff,
+        on_delete=models.PROTECT,
+        related_name="purchase_allocations",
+    )
+    purchase = models.ForeignKey(
+        TradeDocument,
+        on_delete=models.PROTECT,
+        related_name="purchase_setoff_allocations",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["setoff", "purchase"],
+                name="unique_setoff_purchase_allocation",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="purchase_setoff_allocation_positive",
+            ),
+        ]
+
+    def clean(self):
+        if self.setoff_id and self.purchase_id:
+            if self.purchase.business_id != self.setoff.business_id:
+                raise ValidationError("Allocated purchase must belong to the set-off business.")
+            if self.purchase.party_id != self.setoff.party_id:
+                raise ValidationError("Allocated purchase must belong to the set-off contact.")
+            if (
+                self.purchase.kind != TradeDocument.Kind.PURCHASE
+                or self.purchase.status != TradeDocument.Status.POSTED
+                or self.purchase.credit_account.system_role
+                != Account.SystemRole.ACCOUNTS_PAYABLE
+            ):
+                raise ValidationError("Set-off requires a posted Accounts Payable purchase.")
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Set-off allocations cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Set-off allocations cannot be deleted.")

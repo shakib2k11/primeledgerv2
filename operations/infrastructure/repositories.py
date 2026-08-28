@@ -20,9 +20,16 @@ from accounting.models import (
     MoneyReceipt,
     Voucher,
 )
-from core.models import Product, StockMovement
+from core.models import Party, Product, StockMovement
 from core.infrastructure.numbering import allocate_reference_number
-from operations.models import PurchasePayment, SalePayment, TradeDocument
+from operations.models import (
+    BalanceSetoff,
+    PurchasePayment,
+    PurchaseSetoffAllocation,
+    SalePayment,
+    SaleSetoffAllocation,
+    TradeDocument,
+)
 
 
 class DjangoTradeDocumentRepository:
@@ -323,6 +330,9 @@ class DjangoSalePaymentRepository:
         paid = SalePayment.objects.filter(sale=sale).aggregate(total=Sum("amount"))[
             "total"
         ] or Decimal("0.00")
+        paid += SaleSetoffAllocation.objects.filter(sale=sale).aggregate(
+            total=Sum("amount")
+        )["total"] or Decimal("0.00")
         remaining = (sale.total - paid).quantize(Decimal("0.01"))
         if amount <= 0:
             raise ValidationError("Payment amount must be greater than zero.")
@@ -525,6 +535,9 @@ class DjangoPurchasePaymentRepository:
         paid = PurchasePayment.objects.filter(purchase=purchase).aggregate(
             total=Sum("amount")
         )["total"] or Decimal("0.00")
+        paid += PurchaseSetoffAllocation.objects.filter(purchase=purchase).aggregate(
+            total=Sum("amount")
+        )["total"] or Decimal("0.00")
         remaining = (purchase.total - paid).quantize(Decimal("0.01"))
         if amount <= 0:
             raise ValidationError("Payment amount must be greater than zero.")
@@ -603,3 +616,290 @@ class DjangoPurchasePaymentRepository:
         payment.full_clean()
         payment.save()
         return payment
+
+
+class DjangoBalanceSetoffRepository:
+    @staticmethod
+    def _normalized(allocations):
+        return tuple(sorted(
+            (
+                int(allocation.document_id),
+                Decimal(allocation.amount).quantize(
+                    Decimal("0.01"),
+                    rounding=ROUND_HALF_UP,
+                ),
+            )
+            for allocation in allocations
+        ))
+
+    def _validate_idempotent(
+        self,
+        existing,
+        *,
+        party_id,
+        setoff_date,
+        sale_allocations,
+        purchase_allocations,
+    ):
+        existing_sales = tuple(sorted(
+            (item.sale_id, item.amount)
+            for item in existing.sale_allocations.all()
+        ))
+        existing_purchases = tuple(sorted(
+            (item.purchase_id, item.amount)
+            for item in existing.purchase_allocations.all()
+        ))
+        if (
+            existing.party_id != party_id
+            or existing.setoff_date != setoff_date
+            or existing_sales != self._normalized(sale_allocations)
+            or existing_purchases != self._normalized(purchase_allocations)
+        ):
+            raise ValidationError(
+                "This set-off request key was already used with different details."
+            )
+        return existing
+
+    @transaction.atomic
+    def create(
+        self,
+        *,
+        business_id: int,
+        party_id: int,
+        setoff_date,
+        sale_allocations,
+        purchase_allocations,
+        idempotency_key,
+        notes: str = "",
+        user_id: int | None = None,
+    ):
+        sale_allocations = tuple(sale_allocations)
+        purchase_allocations = tuple(purchase_allocations)
+        existing = BalanceSetoff.objects.filter(
+            business_id=business_id,
+            idempotency_key=idempotency_key,
+        ).prefetch_related("sale_allocations", "purchase_allocations").first()
+        if existing:
+            return self._validate_idempotent(
+                existing,
+                party_id=party_id,
+                setoff_date=setoff_date,
+                sale_allocations=sale_allocations,
+                purchase_allocations=purchase_allocations,
+            )
+        if setoff_date > timezone.localdate():
+            raise ValidationError("Set-off date cannot be in the future.")
+
+        party = Party.objects.select_for_update().filter(
+            pk=party_id,
+            business_id=business_id,
+            is_active=True,
+            kind=Party.Kind.BOTH,
+        ).first()
+        if party is None:
+            raise ValidationError(
+                "Select an active contact classified as Customer and Supplier."
+            )
+
+        existing = BalanceSetoff.objects.filter(
+            business_id=business_id,
+            idempotency_key=idempotency_key,
+        ).prefetch_related("sale_allocations", "purchase_allocations").first()
+        if existing:
+            return self._validate_idempotent(
+                existing,
+                party_id=party_id,
+                setoff_date=setoff_date,
+                sale_allocations=sale_allocations,
+                purchase_allocations=purchase_allocations,
+            )
+
+        normalized_sales = self._normalized(sale_allocations)
+        normalized_purchases = self._normalized(purchase_allocations)
+        if not normalized_sales or not normalized_purchases:
+            raise ValidationError(
+                "Select at least one receivable invoice and one payable purchase."
+            )
+        if (
+            len({document_id for document_id, _ in normalized_sales})
+            != len(normalized_sales)
+            or len({document_id for document_id, _ in normalized_purchases})
+            != len(normalized_purchases)
+        ):
+            raise ValidationError("Each document may be allocated only once per set-off.")
+        if any(amount <= 0 for _, amount in normalized_sales + normalized_purchases):
+            raise ValidationError("Every set-off allocation must be greater than zero.")
+        sale_total = sum((amount for _, amount in normalized_sales), Decimal("0.00"))
+        purchase_total = sum(
+            (amount for _, amount in normalized_purchases),
+            Decimal("0.00"),
+        )
+        if sale_total != purchase_total:
+            raise ValidationError(
+                "Receivable and payable allocation totals must be equal."
+            )
+
+        period = FiscalPeriod.objects.select_for_update().filter(
+            business_id=business_id,
+            starts_on__lte=setoff_date,
+            ends_on__gte=setoff_date,
+        ).first()
+        if period is None:
+            raise ValidationError("No fiscal period covers the set-off date.")
+        if period.is_locked:
+            raise ValidationError("The fiscal period covering the set-off date is locked.")
+
+        accounts = {
+            account.system_role: account
+            for account in Account.objects.select_for_update().filter(
+                business_id=business_id,
+                is_active=True,
+                system_role__in=[
+                    Account.SystemRole.ACCOUNTS_RECEIVABLE,
+                    Account.SystemRole.ACCOUNTS_PAYABLE,
+                ],
+            )
+        }
+        receivable_account = accounts.get(Account.SystemRole.ACCOUNTS_RECEIVABLE)
+        payable_account = accounts.get(Account.SystemRole.ACCOUNTS_PAYABLE)
+        if not receivable_account or not payable_account:
+            raise ValidationError(
+                "Active Accounts Receivable and Accounts Payable posting accounts are required."
+            )
+
+        sale_amounts = dict(normalized_sales)
+        purchase_amounts = dict(normalized_purchases)
+        sales = list(
+            TradeDocument.objects.select_for_update()
+            .filter(
+                pk__in=sale_amounts,
+                business_id=business_id,
+                party_id=party_id,
+                kind=TradeDocument.Kind.SALE,
+                status=TradeDocument.Status.POSTED,
+                debit_account=receivable_account,
+            )
+            .prefetch_related("payments", "sale_setoff_allocations")
+        )
+        purchases = list(
+            TradeDocument.objects.select_for_update()
+            .filter(
+                pk__in=purchase_amounts,
+                business_id=business_id,
+                party_id=party_id,
+                kind=TradeDocument.Kind.PURCHASE,
+                status=TradeDocument.Status.POSTED,
+                credit_account=payable_account,
+            )
+            .prefetch_related("supplier_payments", "purchase_setoff_allocations")
+        )
+        if len(sales) != len(sale_amounts):
+            raise ValidationError(
+                "Every receivable allocation must reference an open posted invoice for this contact."
+            )
+        if len(purchases) != len(purchase_amounts):
+            raise ValidationError(
+                "Every payable allocation must reference an open posted purchase for this contact."
+            )
+        for document in sales:
+            if document.document_date > setoff_date:
+                raise ValidationError(
+                    f"Set-off date cannot precede sale {document.number}."
+                )
+            if sale_amounts[document.pk] > document.balance_due:
+                raise ValidationError(
+                    f"Allocation cannot exceed sale {document.number}'s balance of {document.balance_due:.2f}."
+                )
+        for document in purchases:
+            if document.document_date > setoff_date:
+                raise ValidationError(
+                    f"Set-off date cannot precede purchase {document.number}."
+                )
+            if purchase_amounts[document.pk] > document.balance_due:
+                raise ValidationError(
+                    f"Allocation cannot exceed purchase {document.number}'s balance of {document.balance_due:.2f}."
+                )
+
+        number = allocate_reference_number(
+            business_id=business_id,
+            occurred_on=setoff_date,
+        )
+        journal = JournalEntry.objects.create(
+            business=party.business,
+            period=period,
+            reference=f"CONTRA:{number}",
+            description=f"Receivable/payable set-off — {party.name}",
+            entry_date=setoff_date,
+            created_by_id=user_id,
+        )
+        JournalLine.objects.create(
+            entry=journal,
+            account=payable_account,
+            party=party,
+            description="Supplier balance set off",
+            debit=sale_total,
+        )
+        JournalLine.objects.create(
+            entry=journal,
+            account=receivable_account,
+            party=party,
+            description="Customer balance set off",
+            credit=sale_total,
+        )
+        journal.validate_for_posting()
+        JournalEntry.objects.filter(pk=journal.pk).update(posted=True)
+        journal.posted = True
+
+        voucher_base = f"C-{number}"
+        voucher_number = voucher_base
+        suffix = 2
+        while Voucher.objects.filter(
+            business_id=business_id,
+            number=voucher_number,
+        ).exists():
+            marker = f"-{suffix}"
+            voucher_number = f"{voucher_base[:40 - len(marker)]}{marker}"
+            suffix += 1
+        voucher = Voucher(
+            business=party.business,
+            voucher_type=Voucher.Type.CONTRA,
+            number=voucher_number,
+            party=party,
+            journal_entry=journal,
+            total=sale_total,
+            notes=notes,
+            voucher_date=setoff_date,
+        )
+        voucher.full_clean()
+        voucher.save()
+        setoff = BalanceSetoff(
+            business=party.business,
+            party=party,
+            number=number,
+            setoff_date=setoff_date,
+            total_amount=sale_total,
+            journal_entry=journal,
+            voucher=voucher,
+            notes=notes,
+            idempotency_key=idempotency_key,
+            created_by_id=user_id,
+        )
+        setoff.full_clean()
+        setoff.save()
+        for sale in sales:
+            allocation = SaleSetoffAllocation(
+                setoff=setoff,
+                sale=sale,
+                amount=sale_amounts[sale.pk],
+            )
+            allocation.full_clean()
+            allocation.save()
+        for purchase in purchases:
+            allocation = PurchaseSetoffAllocation(
+                setoff=setoff,
+                purchase=purchase,
+                amount=purchase_amounts[purchase.pk],
+            )
+            allocation.full_clean()
+            allocation.save()
+        return setoff

@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Account, FiscalPeriod, JournalEntry, JournalLine, MoneyReceipt, Voucher
+from .models import (
+    Account, ExpensePayment, ExpenseRecord, FiscalPeriod, JournalEntry,
+    JournalLine, MoneyReceipt, Voucher,
+)
 
 
 @admin.register(Account, FiscalPeriod)
@@ -37,6 +40,56 @@ class VoucherAdmin(admin.ModelAdmin):
 class MoneyReceiptAdmin(admin.ModelAdmin):
     list_display = ("number", "business", "party", "receipt_date", "amount")
     list_filter = ("business", "receipt_date")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class ExpensePaymentInline(admin.TabularInline):
+    model = ExpensePayment
+    extra = 0
+    readonly_fields = (
+        "number", "payment_date", "payment_account", "amount", "journal_entry",
+        "voucher", "notes", "paid_by", "created_at",
+    )
+    can_delete = False
+
+
+@admin.register(ExpenseRecord)
+class ExpenseRecordAdmin(admin.ModelAdmin):
+    list_display = (
+        "number", "business", "expense_date", "expense_account", "payee",
+        "settlement", "amount",
+    )
+    list_filter = ("business", "expense_date", "settlement", "expense_account")
+    readonly_fields = (
+        "business", "number", "expense_date", "payee", "expense_account",
+        "settlement", "payment_account", "payable_account", "amount",
+        "description", "external_reference", "journal_entry", "voucher",
+        "idempotency_key", "created_by", "created_at",
+    )
+    inlines = (ExpensePaymentInline,)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ExpensePayment)
+class ExpensePaymentAdmin(admin.ModelAdmin):
+    list_display = ("number", "business", "expense", "payment_date", "amount")
+    list_filter = ("business", "payment_date", "payment_account")
 
     def has_add_permission(self, request):
         return False

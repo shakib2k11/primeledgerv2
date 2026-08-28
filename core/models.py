@@ -87,6 +87,7 @@ class Party(models.Model):
         CUSTOMER = "customer", "Customer"
         SUPPLIER = "supplier", "Supplier"
         BOTH = "both", "Customer and Supplier"
+        EMPLOYEE = "employee", "Employee"
 
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="parties")
     name = models.CharField(max_length=160)

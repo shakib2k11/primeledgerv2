@@ -248,3 +248,94 @@ class PayPurchaseForm(forms.Form):
                 f"Payment cannot exceed the remaining balance of {self.purchase.balance_due:.2f}."
             )
         return amount
+
+
+class BalanceSetoffForm(forms.Form):
+    setoff_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        initial=timezone.localdate,
+    )
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
+    idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
+    confirm = forms.BooleanField(
+        label="I confirm these receivable and payable allocations should be posted.",
+    )
+
+    def __init__(self, *args, sales=(), purchases=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sales = list(sales)
+        self.purchases = list(purchases)
+        if not self.is_bound:
+            self.initial.setdefault("idempotency_key", uuid.uuid4())
+
+        maximum = min(
+            sum((sale.balance_due for sale in self.sales), Decimal("0.00")),
+            sum((purchase.balance_due for purchase in self.purchases), Decimal("0.00")),
+        )
+        sale_remaining = maximum
+        purchase_remaining = maximum
+        self.sale_rows = []
+        self.purchase_rows = []
+        for sale in self.sales:
+            initial = min(sale.balance_due, sale_remaining)
+            self.fields[f"sale_{sale.pk}"] = forms.DecimalField(
+                required=False,
+                max_digits=14,
+                decimal_places=2,
+                min_value=Decimal("0.01"),
+                max_value=sale.balance_due,
+                initial=initial if initial > 0 else None,
+            )
+            self.sale_rows.append((sale, self[f"sale_{sale.pk}"]))
+            sale_remaining -= initial
+        for purchase in self.purchases:
+            initial = min(purchase.balance_due, purchase_remaining)
+            self.fields[f"purchase_{purchase.pk}"] = forms.DecimalField(
+                required=False,
+                max_digits=14,
+                decimal_places=2,
+                min_value=Decimal("0.01"),
+                max_value=purchase.balance_due,
+                initial=initial if initial > 0 else None,
+            )
+            self.purchase_rows.append((purchase, self[f"purchase_{purchase.pk}"]))
+            purchase_remaining -= initial
+
+    def clean_setoff_date(self):
+        setoff_date = self.cleaned_data["setoff_date"]
+        if setoff_date > timezone.localdate():
+            raise forms.ValidationError("Set-off date cannot be in the future.")
+        return setoff_date
+
+    def clean(self):
+        cleaned = super().clean()
+        sale_allocations = tuple(
+            (sale.pk, cleaned.get(f"sale_{sale.pk}"))
+            for sale in self.sales
+            if cleaned.get(f"sale_{sale.pk}")
+        )
+        purchase_allocations = tuple(
+            (purchase.pk, cleaned.get(f"purchase_{purchase.pk}"))
+            for purchase in self.purchases
+            if cleaned.get(f"purchase_{purchase.pk}")
+        )
+        sale_total = sum((amount for _, amount in sale_allocations), Decimal("0.00"))
+        purchase_total = sum(
+            (amount for _, amount in purchase_allocations),
+            Decimal("0.00"),
+        )
+        if not sale_allocations or not purchase_allocations:
+            raise forms.ValidationError(
+                "Allocate at least one receivable invoice and one payable purchase."
+            )
+        if sale_total != purchase_total:
+            raise forms.ValidationError(
+                "Receivable and payable allocation totals must be equal."
+            )
+        cleaned["sale_allocations"] = sale_allocations
+        cleaned["purchase_allocations"] = purchase_allocations
+        cleaned["setoff_total"] = sale_total
+        return cleaned

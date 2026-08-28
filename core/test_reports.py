@@ -101,6 +101,13 @@ class BusinessReportTests(TestCase):
             name="Sales",
             account_type=Account.Type.INCOME,
         )
+        self.receivable = Account.objects.create(
+            business=self.business,
+            code="1100",
+            name="Accounts Receivable",
+            account_type=Account.Type.ASSET,
+            system_role=Account.SystemRole.ACCOUNTS_RECEIVABLE,
+        )
         self.invoice = TradeDocument.objects.create(
             business=self.business,
             kind=TradeDocument.Kind.SALE,
@@ -267,6 +274,28 @@ class BusinessReportTests(TestCase):
             account=self.sales,
             credit=Decimal("250.00"),
         )
+        JournalLine.objects.create(
+            entry=activity_journal,
+            account=self.receivable,
+            party=self.customer,
+            debit=Decimal("50.00"),
+        )
+        JournalLine.objects.create(
+            entry=activity_journal,
+            account=self.sales,
+            credit=Decimal("50.00"),
+        )
+        JournalLine.objects.create(
+            entry=activity_journal,
+            account=self.cash,
+            debit=Decimal("25.00"),
+        )
+        JournalLine.objects.create(
+            entry=activity_journal,
+            account=self.receivable,
+            party=self.customer,
+            credit=Decimal("25.00"),
+        )
         JournalEntry.objects.filter(pk=activity_journal.pk).update(posted=True)
         hidden_activity = JournalEntry.objects.create(
             business=self.other,
@@ -292,10 +321,12 @@ class BusinessReportTests(TestCase):
         response = self.client.get(reverse("contact-report"), {"kind": "customer"})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="report-summary"')
-        self.assertContains(response, 'class="report-filter-bar"')
+        self.assertContains(response, 'class="report-filter-bar contact-report-filter"')
         self.assertContains(response, 'class="report-table"')
         self.assertContains(response, "Amina Customer")
         self.assertContains(response, "Combined Trading")
+        self.assertContains(response, "Closing position")
+        self.assertContains(response, "150.00")
         self.assertNotContains(response, "Bengal Supplier")
         self.assertNotContains(response, "Hidden Contact")
 
@@ -307,8 +338,16 @@ class BusinessReportTests(TestCase):
         self.assertContains(csv_response, "Combined Trading")
         self.assertNotContains(csv_response, "Amina Customer")
         self.assertNotContains(csv_response, "Hidden Contact")
+        self.assertContains(csv_response, "Closing balance")
         pdf_response = self.client.get(reverse("contact-report-pdf"))
         self.assertTrue(pdf_response.content.startswith(b"%PDF"))
+        before_activity = self.client.get(
+            reverse("contact-report"),
+            {"kind": "customer", "as_of": "2026-08-01"},
+        )
+        self.assertContains(before_activity, "Balances as of 01 Aug 2026")
+        self.assertContains(before_activity, "125.00")
+        self.assertNotContains(before_activity, "150.00")
 
     def test_invoice_report_contains_only_posted_tenant_sales(self):
         response = self.client.get(reverse("invoice-report"))
@@ -361,15 +400,17 @@ class BusinessReportTests(TestCase):
         self.assertContains(response, "Closing Cr")
         self.assertContains(response, "1010 · Cash")
         self.assertContains(response, "4010 · Sales")
-        self.assertContains(response, "350.00", count=2)
+        self.assertContains(response, "Dr 400.00")
+        self.assertContains(response, "Cr 400.00")
         self.assertNotContains(response, "999.00")
 
         csv_response = self.client.get(reverse("account-activity-report-csv"), filters)
         self.assertEqual(csv_response.status_code, 200)
         csv_text = csv_response.content.decode()
         self.assertIn("Opening debit (BDT)", csv_text)
-        self.assertIn("1010,Cash,Asset,Active,100.00,0.00,250.00,0.00,350.00,0.00", csv_text)
-        self.assertIn("4010,Sales,Income,Active,0.00,100.00,0.00,250.00,0.00,350.00", csv_text)
+        self.assertIn("1010,Cash,Asset,Active,100.00,0.00,275.00,0.00,375.00,0.00", csv_text)
+        self.assertIn("1100,Accounts Receivable,Asset,Active,0.00,0.00,50.00,25.00,25.00,0.00", csv_text)
+        self.assertIn("4010,Sales,Income,Active,0.00,100.00,0.00,300.00,0.00,400.00", csv_text)
         self.assertNotIn("999.00", csv_text)
 
         pdf_response = self.client.get(reverse("account-activity-report-pdf"), filters)

@@ -32,15 +32,16 @@
     </div>
     {{ formset.management_form }}
     {% if formset.non_form_errors %}<div class="alert error line-error">{{ formset.non_form_errors }}</div>{% endif %}
-    <div class="trade-line-grid trade-line-head"><span>Product / service</span><span>Description</span><span>Quantity</span><span>Unit price</span><span></span></div>
+    <div class="trade-line-grid trade-line-head"><span>Product / service</span><span>Description</span><span>Quantity</span><span>Unit price</span><span class="numeric">Amount</span><span></span></div>
     <div data-formset-lines>
       {% for line_form in formset %}
       <div class="trade-line-grid">
         {{ line_form.id }}
-        <div>{{ line_form.product }}{{ line_form.product.errors }}</div>
-        <div>{{ line_form.description }}{{ line_form.description.errors }}</div>
-        <div>{{ line_form.quantity }}{{ line_form.quantity.errors }}</div>
-        <div>{{ line_form.unit_price }}{{ line_form.unit_price.errors }}</div>
+        <div class="line-product">{{ line_form.product }}{{ line_form.product.errors }}</div>
+        <div class="line-description">{{ line_form.description }}{{ line_form.description.errors }}</div>
+        <div class="line-quantity">{{ line_form.quantity }}{{ line_form.quantity.errors }}</div>
+        <div class="line-unit-price">{{ line_form.unit_price }}{{ line_form.unit_price.errors }}</div>
+        <div class="line-amount" data-line-amount aria-label="Calculated amount">0.00</div>
         <div class="delete-line">{% if line_form.instance.pk %}{{ line_form.DELETE }} <label for="{{ line_form.DELETE.id_for_label }}">Remove</label>{% endif %}</div>
       </div>
       {% endfor %}
@@ -48,10 +49,11 @@
     <template>
       <div class="trade-line-grid">
         {{ formset.empty_form.id }}
-        <div>{{ formset.empty_form.product }}</div>
-        <div>{{ formset.empty_form.description }}</div>
-        <div>{{ formset.empty_form.quantity }}</div>
-        <div>{{ formset.empty_form.unit_price }}</div>
+        <div class="line-product">{{ formset.empty_form.product }}</div>
+        <div class="line-description">{{ formset.empty_form.description }}</div>
+        <div class="line-quantity">{{ formset.empty_form.quantity }}</div>
+        <div class="line-unit-price">{{ formset.empty_form.unit_price }}</div>
+        <div class="line-amount" data-line-amount aria-label="Calculated amount">0.00</div>
         <div></div>
       </div>
     </template>

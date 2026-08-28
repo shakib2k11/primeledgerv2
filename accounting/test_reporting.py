@@ -3,7 +3,10 @@ from types import SimpleNamespace
 
 from django.test import SimpleTestCase
 
-from accounting.application.reporting import build_account_activity
+from accounting.application.reporting import (
+    build_account_activity,
+    calculate_contact_closing_balance,
+)
 
 
 class AccountActivityCalculationTests(SimpleTestCase):
@@ -29,3 +32,26 @@ class AccountActivityCalculationTests(SimpleTestCase):
         self.assertEqual(totals.period_debit, Decimal("270.00"))
         self.assertEqual(totals.period_credit, Decimal("270.00"))
         self.assertEqual(totals.closing_debit, totals.closing_credit)
+
+    def test_calculates_receivable_payable_and_settled_contact_positions(self):
+        receivable = calculate_contact_closing_balance(
+            Decimal("125.00"),
+            False,
+            Decimal("50.00"),
+            Decimal("25.00"),
+        )
+        payable = calculate_contact_closing_balance(
+            Decimal("100.00"),
+            True,
+            Decimal("20.00"),
+            Decimal("50.00"),
+        )
+        settled = calculate_contact_closing_balance(
+            Decimal("25.00"),
+            False,
+            Decimal("0.00"),
+            Decimal("25.00"),
+        )
+        self.assertEqual((receivable.amount, receivable.position), (Decimal("150.00"), "Receivable"))
+        self.assertEqual((payable.amount, payable.position), (Decimal("130.00"), "Payable"))
+        self.assertEqual((settled.amount, settled.position), (Decimal("0.00"), "Settled"))

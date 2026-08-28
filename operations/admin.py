@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from operations.models import PurchasePayment, SalePayment, TradeDocument, TradeLine
+from operations.models import (
+    BalanceSetoff,
+    PurchasePayment,
+    PurchaseSetoffAllocation,
+    SalePayment,
+    SaleSetoffAllocation,
+    TradeDocument,
+    TradeLine,
+)
 
 
 class TradeLineInline(admin.TabularInline):
@@ -65,6 +73,41 @@ class PurchasePaymentAdmin(admin.ModelAdmin):
         "business", "purchase", "number", "payment_account", "amount", "payment_date",
         "journal_entry", "voucher", "notes", "idempotency_key", "paid_by", "created_at",
     )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class SaleSetoffAllocationInline(admin.TabularInline):
+    model = SaleSetoffAllocation
+    extra = 0
+    readonly_fields = ("sale", "amount")
+    can_delete = False
+
+
+class PurchaseSetoffAllocationInline(admin.TabularInline):
+    model = PurchaseSetoffAllocation
+    extra = 0
+    readonly_fields = ("purchase", "amount")
+    can_delete = False
+
+
+@admin.register(BalanceSetoff)
+class BalanceSetoffAdmin(admin.ModelAdmin):
+    list_display = ("number", "business", "party", "setoff_date", "total_amount")
+    list_filter = ("business", "setoff_date")
+    readonly_fields = (
+        "business", "party", "number", "setoff_date", "total_amount",
+        "journal_entry", "voucher", "notes", "idempotency_key", "created_by",
+        "created_at",
+    )
+    inlines = (SaleSetoffAllocationInline, PurchaseSetoffAllocationInline)
 
     def has_add_permission(self, request):
         return False

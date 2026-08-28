@@ -40,6 +40,7 @@
         {% endif %}
         {% if can_view_accounting %}
         <span class="nav-label nav-section">Finance</span>
+        <a href="{% url 'expense-list' %}" class="nav-item {% if 'expense-' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4V3Zm3 4v2h10V7H7Zm0 4v2h6v-2H7Zm0 4v2h10v-2H7Z"/></svg><span>Expenses</span></a>
         <a href="{% url 'accounting-overview' %}" class="nav-item {% if request.resolver_match.url_name == 'accounting-overview' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16v2H4v-2Zm1-8h3v6H5v-6Zm5-4h3v10h-3V7Zm5 2h3v8h-3V9ZM4 5l8-3 8 3v2H4V5Z"/></svg><span>Accounting</span></a>
         <a href="{% url 'journal-list' %}" class="nav-item {% if 'journal' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 4v2h10V7H7Zm0 4v2h10v-2H7Zm0 4v2h7v-2H7Z"/></svg><span>Journals</span></a>
         <a href="{% url 'voucher-list' %}" class="nav-item {% if 'voucher' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h12a2 2 0 0 1 2 2v18l-4-2-4 2-4-2-4 2V4a2 2 0 0 1 2-2Zm2 5v2h8V7H8Zm0 4v2h8v-2H8Zm0 4v2h5v-2H8Z"/></svg><span>Vouchers</span></a>

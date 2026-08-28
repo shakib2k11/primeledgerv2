@@ -1,4 +1,5 @@
 from decimal import Decimal
+import uuid
 
 from django import forms
 from django.forms import BaseInlineFormSet, inlineformset_factory
@@ -9,6 +10,7 @@ from accounting.models import (
     AccountTemplateLine,
     ChartOfAccountsTemplate,
     FiscalPeriod,
+    ExpenseRecord,
     JournalEntry,
     JournalLine,
     Voucher,
@@ -164,3 +166,107 @@ class VoucherForm(forms.ModelForm):
         model = Voucher
         fields = ["voucher_type", "number", "party", "journal_entry", "notes"]
         widgets = {"notes": forms.Textarea(attrs={"rows": 3})}
+
+
+class ExpenseRecordForm(forms.Form):
+    expense_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}), initial=timezone.localdate
+    )
+    expense_account = forms.ModelChoiceField(queryset=Account.objects.none())
+    payee = forms.ModelChoiceField(
+        queryset=Party.objects.none(), required=False,
+        help_text="Required when the expense will be paid later.",
+    )
+    settlement = forms.ChoiceField(choices=ExpenseRecord.Settlement.choices)
+    payment_account = forms.ModelChoiceField(
+        queryset=Account.objects.none(), required=False
+    )
+    amount = forms.DecimalField(
+        max_digits=14, decimal_places=2, min_value=Decimal("0.01")
+    )
+    description = forms.CharField(max_length=255)
+    external_reference = forms.CharField(
+        max_length=80, required=False,
+        help_text="Bill, payroll, lease, or supplier reference.",
+    )
+    idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
+    confirm = forms.BooleanField(
+        label="I confirm this expense should be posted to the ledger."
+    )
+
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.business = business
+        self.fields["expense_account"].queryset = Account.objects.filter(
+            business=business, is_active=True, account_type=Account.Type.EXPENSE
+        ).order_by("code")
+        self.fields["payee"].queryset = Party.objects.filter(
+            business=business, is_active=True
+        ).order_by("name")
+        self.fields["payment_account"].queryset = Account.objects.filter(
+            business=business,
+            is_active=True,
+            system_role__in=[
+                Account.SystemRole.CASH,
+                Account.SystemRole.BANK,
+                Account.SystemRole.MOBILE_MONEY,
+            ],
+        ).order_by("code")
+        if not self.is_bound:
+            self.initial.setdefault("idempotency_key", uuid.uuid4())
+
+    def clean_expense_date(self):
+        value = self.cleaned_data["expense_date"]
+        if value > timezone.localdate():
+            raise forms.ValidationError("Expense date cannot be in the future.")
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        settlement = cleaned.get("settlement")
+        if settlement == ExpenseRecord.Settlement.PAID:
+            if not cleaned.get("payment_account"):
+                self.add_error("payment_account", "Select the account used to pay.")
+        elif settlement == ExpenseRecord.Settlement.PAYABLE:
+            if not cleaned.get("payee"):
+                self.add_error("payee", "Select the person or organization to be paid.")
+            cleaned["payment_account"] = None
+        return cleaned
+
+
+class ExpensePaymentForm(forms.Form):
+    payment_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}), initial=timezone.localdate
+    )
+    payment_account = forms.ModelChoiceField(queryset=Account.objects.none())
+    amount = forms.DecimalField(
+        max_digits=14, decimal_places=2, min_value=Decimal("0.01")
+    )
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))
+    idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
+    confirm = forms.BooleanField(label="I confirm this payment should be posted.")
+
+    def __init__(self, *args, business=None, expense=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.expense = expense
+        self.fields["payment_account"].queryset = Account.objects.filter(
+            business=business,
+            is_active=True,
+            system_role__in=[
+                Account.SystemRole.CASH,
+                Account.SystemRole.BANK,
+                Account.SystemRole.MOBILE_MONEY,
+            ],
+        ).order_by("code")
+        self.fields["amount"].max_value = expense.balance_due
+        if not self.is_bound:
+            self.initial.setdefault("amount", expense.balance_due)
+            self.initial.setdefault("idempotency_key", uuid.uuid4())
+
+    def clean_payment_date(self):
+        value = self.cleaned_data["payment_date"]
+        if value > timezone.localdate():
+            raise forms.ValidationError("Payment date cannot be in the future.")
+        if value < self.expense.expense_date:
+            raise forms.ValidationError("Payment date cannot precede the expense date.")
+        return value

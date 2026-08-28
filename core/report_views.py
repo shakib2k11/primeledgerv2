@@ -13,7 +13,10 @@ from django.utils import timezone
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
 
-from accounting.application.reporting import build_account_activity
+from accounting.application.reporting import (
+    build_account_activity,
+    calculate_contact_closing_balance,
+)
 from accounting.models import Account, JournalLine, MoneyReceipt, Voucher
 from core.application.services import ACCOUNTING_VIEW, CONTACTS_VIEW, SALES_VIEW
 from core.models import Party
@@ -37,7 +40,7 @@ from core.pdf import (
     draw_table_row_background,
 )
 from core.views import authorize, is_authorized, request_business
-from operations.models import SalePayment, TradeDocument
+from operations.models import SalePayment, SaleSetoffAllocation, TradeDocument
 
 
 def _report_business(request, permission):
@@ -64,11 +67,13 @@ def _date_range_label(date_from, date_to):
     return f"{date_from.isoformat() if date_from else 'All'} to {date_to.isoformat() if date_to else 'All'}"
 
 
-def _write_csv_heading(writer, business, report_name, *, date_range=None):
+def _write_csv_heading(writer, business, report_name, *, date_range=None, as_of=None):
     writer.writerow(["Business", business.name])
     writer.writerow(["Report", report_name])
     if date_range:
         writer.writerow(["Date range", date_range])
+    if as_of:
+        writer.writerow(["As of", as_of.strftime("%d-%b-%Y")])
     writer.writerow(["Currency", business.currency])
     writer.writerow(["Generated", timezone.localdate().strftime("%d-%b-%Y")])
     writer.writerow([])
@@ -101,6 +106,7 @@ def _contact_filters(request, business):
     query = request.GET.get("q", "").strip()
     kind = request.GET.get("kind", "")
     state = request.GET.get("state", "active")
+    as_of = _parse_date(request.GET.get("as_of", "")) or timezone.localdate()
     contacts = Party.objects.filter(business=business)
     if state == "inactive":
         contacts = contacts.filter(is_active=False)
@@ -113,6 +119,8 @@ def _contact_filters(request, business):
         contacts = contacts.filter(kind__in=[Party.Kind.SUPPLIER, Party.Kind.BOTH])
     elif kind == Party.Kind.BOTH:
         contacts = contacts.filter(kind=Party.Kind.BOTH)
+    elif kind == Party.Kind.EMPLOYEE:
+        contacts = contacts.filter(kind=Party.Kind.EMPLOYEE)
     else:
         kind = ""
     if query:
@@ -122,10 +130,44 @@ def _contact_filters(request, business):
             | Q(email__icontains=query)
             | Q(address__icontains=query)
         )
-    return contacts.order_by("name", "pk"), {
+    contacts = list(contacts.order_by("name", "pk"))
+    party_totals = {
+        item["party_id"]: (
+            item["debit"] or Decimal("0.00"),
+            item["credit"] or Decimal("0.00"),
+        )
+        for item in JournalLine.objects.filter(
+            entry__business=business,
+            entry__posted=True,
+            entry__entry_date__lte=as_of,
+            account__system_role__in=[
+                Account.SystemRole.ACCOUNTS_RECEIVABLE,
+                Account.SystemRole.ACCOUNTS_PAYABLE,
+            ],
+            party_id__in=[party.pk for party in contacts],
+        ).values("party_id").annotate(
+            debit=Sum("debit"),
+            credit=Sum("credit"),
+        )
+    }
+    for party in contacts:
+        debit, credit = party_totals.get(
+            party.pk,
+            (Decimal("0.00"), Decimal("0.00")),
+        )
+        closing = calculate_contact_closing_balance(
+            party.opening_balance,
+            party.opening_balance_is_payable,
+            debit,
+            credit,
+        )
+        party.closing_balance = closing.amount
+        party.closing_balance_position = closing.position
+    return contacts, {
         "query": query,
         "kind": kind,
         "state": state,
+        "as_of": as_of,
     }
 
 
@@ -136,7 +178,9 @@ def _invoice_filters(request, business):
         business=business,
         kind=TradeDocument.Kind.SALE,
         status=TradeDocument.Status.POSTED,
-    ).select_related("party", "period", "debit_account").prefetch_related("payments")
+    ).select_related("party", "period", "debit_account").prefetch_related(
+        "payments", "sale_setoff_allocations"
+    )
     if query:
         invoices = invoices.filter(
             Q(number__icontains=query) | Q(party__name__icontains=query)
@@ -299,22 +343,22 @@ def account_activity_report_csv(request):
             row.account.name,
             row.account.get_account_type_display(),
             "Active" if row.account.is_active else "Inactive",
-            row.opening_debit,
-            row.opening_credit,
-            row.period_debit,
-            row.period_credit,
-            row.closing_debit,
-            row.closing_credit,
+            f"{row.opening_debit:.2f}",
+            f"{row.opening_credit:.2f}",
+            f"{row.period_debit:.2f}",
+            f"{row.period_credit:.2f}",
+            f"{row.closing_debit:.2f}",
+            f"{row.closing_credit:.2f}",
         ])
     writer.writerow([])
     writer.writerow([
         "TOTAL", "", "", "",
-        totals.opening_debit,
-        totals.opening_credit,
-        totals.period_debit,
-        totals.period_credit,
-        totals.closing_debit,
-        totals.closing_credit,
+        f"{totals.opening_debit:.2f}",
+        f"{totals.opening_credit:.2f}",
+        f"{totals.period_debit:.2f}",
+        f"{totals.period_credit:.2f}",
+        f"{totals.closing_debit:.2f}",
+        f"{totals.closing_credit:.2f}",
     ])
     return response
 
@@ -457,14 +501,19 @@ def contact_report_csv(request):
     business = _report_business(request, CONTACTS_VIEW)
     if business is None:
         return render(request, "core/no-business.html")
-    contacts, _ = _contact_filters(request, business)
+    contacts, filters = _contact_filters(request, business)
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="contact-directory.csv"'
     writer = csv.writer(response)
-    _write_csv_heading(writer, business, "Contact directory")
+    _write_csv_heading(
+        writer,
+        business,
+        "Contact directory",
+        as_of=filters["as_of"],
+    )
     writer.writerow([
         "Name", "Type", "Phone", "Email", "Address", "Opening balance",
-        "Balance position", "Status",
+        "Opening position", "Closing balance", "Closing position", "Status",
     ])
     wrote_row = False
     for party in contacts:
@@ -482,6 +531,8 @@ def contact_report_csv(request):
             party.address,
             party.opening_balance,
             position,
+            party.closing_balance,
+            party.closing_balance_position,
             "Active" if party.is_active else "Inactive",
         ])
     if not wrote_row:
@@ -494,7 +545,7 @@ def contact_report_pdf(request):
     business = _report_business(request, CONTACTS_VIEW)
     if business is None:
         return render(request, "core/no-business.html")
-    contacts, _ = _contact_filters(request, business)
+    contacts, filters = _contact_filters(request, business)
     rows = list(contacts)
     buffer = BytesIO()
     page_size = landscape(A4)
@@ -506,6 +557,7 @@ def contact_report_pdf(request):
         pdf,
         business,
         "Contact directory",
+        date_range=f"As of {filters['as_of']:%d %b %Y}",
         page_size=page_size,
         page_number=page_number,
     )
@@ -516,11 +568,12 @@ def contact_report_pdf(request):
             current_y,
             (
                 (PAGE_MARGIN, "Contact", "left"),
-                (210, "Relationship", "left"),
-                (325, "Phone", "left"),
-                (430, "Email", "left"),
-                (710, f"Opening ({business.currency})", "right"),
-                (748, "Position", "left"),
+                (200, "Relationship", "left"),
+                (300, "Phone", "left"),
+                (500, f"Opening ({business.currency})", "right"),
+                (610, f"Closing ({business.currency})", "right"),
+                (650, "Position", "left"),
+                (745, "Status", "left"),
             ),
             width=width,
         )
@@ -542,6 +595,7 @@ def contact_report_pdf(request):
                 pdf,
                 business,
                 "Contact directory",
+                date_range=f"As of {filters['as_of']:%d %b %Y}",
                 page_size=page_size,
                 page_number=page_number,
             )
@@ -563,15 +617,19 @@ def contact_report_pdf(request):
         pdf.drawString(PAGE_MARGIN, y, clean_text(party.name, 31))
         pdf.setFillColor(INK_SOFT)
         pdf.setFont("Helvetica", 7.5)
-        pdf.drawString(210, y, clean_text(party.get_kind_display(), 20))
-        pdf.drawString(325, y, party.phone[:18] or "-")
-        pdf.drawString(430, y, clean_text(party.email, 32) or "-")
+        pdf.drawString(200, y, clean_text(party.get_kind_display(), 20))
+        pdf.drawString(300, y, party.phone[:18] or "-")
         pdf.setFillColor(INK)
         pdf.setFont("Helvetica-Bold", 7.5)
-        pdf.drawRightString(710, y, f"{party.opening_balance:.2f} {business.currency}")
-        pdf.setFillColor(TEAL if position == "Receivable" else INK_SOFT)
+        pdf.drawRightString(500, y, f"{party.opening_balance:.2f}")
+        pdf.drawRightString(610, y, f"{party.closing_balance:.2f}")
+        pdf.setFillColor(
+            TEAL if party.closing_balance_position == "Receivable" else INK_SOFT
+        )
         pdf.setFont("Helvetica-Bold", 7.3)
-        pdf.drawString(735, y, position)
+        pdf.drawString(650, y, party.closing_balance_position)
+        pdf.setFillColor(INK_SOFT)
+        pdf.drawString(745, y, "Active" if party.is_active else "Inactive")
         y -= 21
     draw_page_footer(pdf, width=width, page_number=page_number)
     pdf.save()
@@ -596,6 +654,10 @@ def invoice_report(request):
     ).aggregate(total=Sum("total"))["total"] or 0
     allocated_paid = SalePayment.objects.filter(
         business=business,
+        sale__in=invoices,
+    ).aggregate(total=Sum("amount"))["total"] or 0
+    allocated_paid += SaleSetoffAllocation.objects.filter(
+        setoff__business=business,
         sale__in=invoices,
     ).aggregate(total=Sum("amount"))["total"] or 0
     paid_total = immediate_paid + allocated_paid

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}New balance set-off | Prime Ledger{% endblock %}
+{% block content %}
+<header class="page-heading detail-heading">
+  <div><div class="breadcrumb"><a href="{% url 'payment-center' %}">Payments</a><span>/</span><span>Balance set-off</span></div><span class="overline">Contra settlement</span><h1>Set off mutual balances</h1><p class="lede">{{ party.name }} is both a customer and supplier. Allocate equal amounts to clear receivables against payables without moving cash.</p></div>
+</header>
+<form method="post" class="setoff-form" data-setoff-form>
+  {% csrf_token %}{{ form.idempotency_key }}
+  {% if form.non_field_errors %}<div class="alert error">{{ form.non_field_errors }}</div>{% endif %}
+  <section class="panel setoff-control-panel">
+    <div class="field"><label for="{{ form.setoff_date.id_for_label }}">Set-off date</label>{{ form.setoff_date }}{{ form.setoff_date.errors }}</div>
+    <div class="field grow"><label for="{{ form.notes.id_for_label }}">Internal note <span class="muted">Optional</span></label>{{ form.notes }}{{ form.notes.errors }}</div>
+  </section>
+  <section class="setoff-ledgers">
+    <article class="panel data-panel">
+      <div class="table-panel-heading"><div><span class="overline">Accounts receivable</span><h2>Customer invoices</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Invoice</th><th>Date</th><th class="numeric">Balance</th><th class="numeric">Set off</th></tr></thead><tbody>
+        {% for document, field in form.sale_rows %}<tr><td><a class="table-link" href="{% url 'sale-detail' document.pk %}">{{ document.number }}</a></td><td>{{ document.document_date|date:"d M Y" }}</td><td class="numeric money">{{ document.balance_due|floatformat:2 }}</td><td class="numeric setoff-input">{{ field }}{{ field.errors }}</td></tr>{% endfor %}
+      </tbody></table></div>
+      <div class="setoff-subtotal"><span>Receivable selected</span><strong data-setoff-sale-total>0.00</strong></div>
+    </article>
+    <article class="panel data-panel">
+      <div class="table-panel-heading"><div><span class="overline">Accounts payable</span><h2>Supplier purchases</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Purchase</th><th>Date</th><th class="numeric">Balance</th><th class="numeric">Set off</th></tr></thead><tbody>
+        {% for document, field in form.purchase_rows %}<tr><td><a class="table-link" href="{% url 'purchase-detail' document.pk %}">{{ document.number }}</a></td><td>{{ document.document_date|date:"d M Y" }}</td><td class="numeric money">{{ document.balance_due|floatformat:2 }}</td><td class="numeric setoff-input">{{ field }}{{ field.errors }}</td></tr>{% endfor %}
+      </tbody></table></div>
+      <div class="setoff-subtotal"><span>Payable selected</span><strong data-setoff-purchase-total>0.00</strong></div>
+    </article>
+  </section>
+  <section class="panel setoff-confirm-panel">
+    <div><span class="overline">Posting check</span><h2 data-setoff-status>Allocations must balance</h2><p>A posted contra journal will debit Accounts Payable and credit Accounts Receivable. This action is permanent.</p></div>
+    <div class="setoff-confirm-actions"><label class="check-field">{{ form.confirm }} <span>{{ form.confirm.label }}</span></label>{{ form.confirm.errors }}<div><a class="button secondary" href="{% url 'payment-center' %}">Cancel</a><button class="button primary" type="submit">Post balance set-off</button></div></div>
+  </section>
+</form>
+{% endblock %}

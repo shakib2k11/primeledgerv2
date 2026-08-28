@@ -14,11 +14,21 @@ from core.application.services import SALES_VIEW
 from core.infrastructure.numbering import allocate_reference_number
 from core.models import Business, InventoryUnit, Membership, Party, Product, Role, StockMovement
 from operations.infrastructure.repositories import (
+    DjangoBalanceSetoffRepository,
     DjangoPurchasePaymentRepository,
     DjangoSalePaymentRepository,
     DjangoTradeDocumentRepository,
 )
-from operations.models import PurchasePayment, SalePayment, TradeDocument, TradeLine
+from operations.application.services import SetoffAllocationCommand
+from operations.models import (
+    BalanceSetoff,
+    PurchasePayment,
+    PurchaseSetoffAllocation,
+    SalePayment,
+    SaleSetoffAllocation,
+    TradeDocument,
+    TradeLine,
+)
 
 
 class TradeWorkflowTests(TestCase):
@@ -35,6 +45,11 @@ class TradeWorkflowTests(TestCase):
         )
         self.supplier = Party.objects.create(
             business=self.business, name="Supplier One", kind=Party.Kind.SUPPLIER
+        )
+        self.both_party = Party.objects.create(
+            business=self.business,
+            name="Mutual Trading Partner",
+            kind=Party.Kind.BOTH,
         )
         self.pack = InventoryUnit.objects.get(business__isnull=True, code="pack")
         self.piece = InventoryUnit.objects.get(business__isnull=True, code="piece")
@@ -108,6 +123,7 @@ class TradeWorkflowTests(TestCase):
         quantity="2.000",
         discount_type=TradeDocument.DiscountType.NONE,
         discount_value="0.00",
+        party=None,
     ):
         document_date = date(2026, 8, 26)
         document = TradeDocument.objects.create(
@@ -117,7 +133,7 @@ class TradeWorkflowTests(TestCase):
                 business_id=self.business.pk,
                 occurred_on=document_date,
             ),
-            party=(self.customer if kind == TradeDocument.Kind.SALE else self.supplier),
+            party=(party or (self.customer if kind == TradeDocument.Kind.SALE else self.supplier)),
             period=self.period,
             debit_account=(self.receivable if kind == TradeDocument.Kind.SALE else self.inventory),
             credit_account=(self.revenue if kind == TradeDocument.Kind.SALE else self.payable),
@@ -756,6 +772,14 @@ class TradeWorkflowTests(TestCase):
         self.assertEqual(stock_pdf.status_code, 200)
         self.assertTrue(stock_pdf.content.startswith(b"%PDF"))
 
+    def test_sale_and_purchase_line_grids_show_calculated_amount_column(self):
+        for route in ("sale-create", "purchase-create"):
+            response = self.client.get(reverse(route))
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "<span class=\"numeric\">Amount</span>", html=True)
+            self.assertContains(response, "data-line-amount")
+            self.assertContains(response, "Calculated amount")
+
     def test_ui_rejects_discount_that_consumes_the_sale(self):
         response = self.client.post(
             reverse("sale-create"),
@@ -879,6 +903,185 @@ class TradeWorkflowTests(TestCase):
         response = self.client.get(reverse("stock-movement-pdf"), {"date_from": "2099-01-01"})
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.content.startswith(b"%PDF"))
+
+
+    def test_mutual_balances_can_be_set_off_atomically_and_printed(self):
+        purchase = self.make_document(
+            TradeDocument.Kind.PURCHASE, quantity="2.000", party=self.both_party
+        )
+        sale = self.make_document(
+            TradeDocument.Kind.SALE, quantity="2.000", party=self.both_party
+        )
+        document_repository = DjangoTradeDocumentRepository()
+        document_repository.post(
+            document_id=purchase.pk, business_id=self.business.pk
+        )
+        document_repository.post(document_id=sale.pk, business_id=self.business.pk)
+
+        key = uuid.uuid4()
+        repository = DjangoBalanceSetoffRepository()
+        setoff = repository.create(
+            business_id=self.business.pk,
+            party_id=self.both_party.pk,
+            setoff_date=date(2026, 8, 27),
+            sale_allocations=(
+                SetoffAllocationCommand(sale.pk, Decimal("120.00")),
+            ),
+            purchase_allocations=(
+                SetoffAllocationCommand(purchase.pk, Decimal("120.00")),
+            ),
+            idempotency_key=key,
+            notes="Mutual invoice settlement",
+            user_id=self.user.pk,
+        )
+        repeated = repository.create(
+            business_id=self.business.pk,
+            party_id=self.both_party.pk,
+            setoff_date=date(2026, 8, 27),
+            sale_allocations=(
+                SetoffAllocationCommand(sale.pk, Decimal("120.00")),
+            ),
+            purchase_allocations=(
+                SetoffAllocationCommand(purchase.pk, Decimal("120.00")),
+            ),
+            idempotency_key=key,
+            user_id=self.user.pk,
+        )
+        self.assertEqual(repeated.pk, setoff.pk)
+        self.assertEqual(BalanceSetoff.objects.count(), 1)
+        self.assertEqual(setoff.voucher.voucher_type, Voucher.Type.CONTRA)
+        self.assertTrue(setoff.journal_entry.posted)
+        self.assertEqual(setoff.journal_entry.total_debit, Decimal("120.00"))
+        self.assertTrue(
+            setoff.journal_entry.lines.filter(
+                account=self.payable, debit=Decimal("120.00")
+            ).exists()
+        )
+        self.assertTrue(
+            setoff.journal_entry.lines.filter(
+                account=self.receivable, credit=Decimal("120.00")
+            ).exists()
+        )
+        sale.refresh_from_db()
+        purchase.refresh_from_db()
+        self.assertEqual(sale.paid_amount, Decimal("120.00"))
+        self.assertEqual(sale.balance_due, Decimal("120.00"))
+        self.assertEqual(purchase.paid_amount, Decimal("120.00"))
+        self.assertEqual(purchase.balance_due, Decimal("40.00"))
+        self.assertEqual(SalePayment.objects.count(), 0)
+        self.assertEqual(PurchasePayment.objects.count(), 0)
+
+        center = self.client.get(reverse("payment-center"))
+        self.assertContains(center, "Mutual balances")
+        self.assertContains(center, self.both_party.name)
+        detail = self.client.get(reverse("balance-setoff-detail", args=[setoff.pk]))
+        self.assertContains(detail, setoff.number)
+        pdf = self.client.get(reverse("balance-setoff-pdf", args=[setoff.pk]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
+
+    def test_setoff_rejects_unbalanced_or_excess_allocations_without_side_effects(self):
+        purchase = self.make_document(
+            TradeDocument.Kind.PURCHASE, quantity="1.000", party=self.both_party
+        )
+        sale = self.make_document(
+            TradeDocument.Kind.SALE, quantity="1.000", party=self.both_party
+        )
+        documents = DjangoTradeDocumentRepository()
+        documents.post(document_id=purchase.pk, business_id=self.business.pk)
+        documents.post(document_id=sale.pk, business_id=self.business.pk)
+        repository = DjangoBalanceSetoffRepository()
+        journal_count = JournalEntry.objects.count()
+        with self.assertRaises(ValidationError):
+            repository.create(
+                business_id=self.business.pk,
+                party_id=self.both_party.pk,
+                setoff_date=date(2026, 8, 27),
+                sale_allocations=(SetoffAllocationCommand(sale.pk, Decimal("90.00")),),
+                purchase_allocations=(SetoffAllocationCommand(purchase.pk, Decimal("80.00")),),
+                idempotency_key=uuid.uuid4(),
+                user_id=self.user.pk,
+            )
+        with self.assertRaises(ValidationError):
+            repository.create(
+                business_id=self.business.pk,
+                party_id=self.both_party.pk,
+                setoff_date=date(2026, 8, 27),
+                sale_allocations=(SetoffAllocationCommand(sale.pk, Decimal("121.00")),),
+                purchase_allocations=(SetoffAllocationCommand(purchase.pk, Decimal("121.00")),),
+                idempotency_key=uuid.uuid4(),
+                user_id=self.user.pk,
+            )
+        self.assertEqual(BalanceSetoff.objects.count(), 0)
+        self.assertEqual(JournalEntry.objects.count(), journal_count)
+        self.assertEqual(SaleSetoffAllocation.objects.count(), 0)
+        self.assertEqual(PurchaseSetoffAllocation.objects.count(), 0)
+
+    def test_setoff_form_posts_selected_allocations(self):
+        purchase = self.make_document(
+            TradeDocument.Kind.PURCHASE, quantity="1.000", party=self.both_party
+        )
+        sale = self.make_document(
+            TradeDocument.Kind.SALE, quantity="1.000", party=self.both_party
+        )
+        documents = DjangoTradeDocumentRepository()
+        documents.post(document_id=purchase.pk, business_id=self.business.pk)
+        documents.post(document_id=sale.pk, business_id=self.business.pk)
+        page = self.client.get(
+            reverse("balance-setoff-create", args=[self.both_party.pk])
+        )
+        self.assertContains(page, "Set off mutual balances")
+        response = self.client.post(
+            reverse("balance-setoff-create", args=[self.both_party.pk]),
+            {
+                "setoff_date": "2026-08-27",
+                "sale_%s" % sale.pk: "80.00",
+                "purchase_%s" % purchase.pk: "80.00",
+                "notes": "UI set-off",
+                "idempotency_key": str(uuid.uuid4()),
+                "confirm": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(BalanceSetoff.objects.count(), 1)
+
+    def test_balance_setoff_api_creates_and_lists_contra(self):
+        purchase = self.make_document(
+            TradeDocument.Kind.PURCHASE, quantity="1.000", party=self.both_party
+        )
+        sale = self.make_document(
+            TradeDocument.Kind.SALE, quantity="1.000", party=self.both_party
+        )
+        documents = DjangoTradeDocumentRepository()
+        documents.post(document_id=purchase.pk, business_id=self.business.pk)
+        documents.post(document_id=sale.pk, business_id=self.business.pk)
+        api = APIClient()
+        api.force_authenticate(self.user)
+        response = api.post(
+            reverse("api-balance-setoff-list"),
+            {
+                "party": self.both_party.pk,
+                "setoff_date": "2026-08-27",
+                "sale_allocations": [
+                    {"document_id": sale.pk, "amount": "80.00"}
+                ],
+                "purchase_allocations": [
+                    {"document_id": purchase.pk, "amount": "80.00"}
+                ],
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            format="json",
+            HTTP_X_BUSINESS_ID=str(self.business.pk),
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["total_amount"], "80.00")
+        self.assertEqual(response.data["sale_allocations"][0]["document_number"], sale.number)
+        listing = api.get(
+            reverse("api-balance-setoff-list"),
+            HTTP_X_BUSINESS_ID=str(self.business.pk),
+        )
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(len(listing.data), 1)
 
 
 class TradeTenantApiTests(TestCase):

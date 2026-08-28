@@ -1,4 +1,5 @@
 from decimal import Decimal
+import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -293,6 +294,7 @@ class Voucher(models.Model):
         PURCHASE = "purchase", "Purchase"
         RECEIPT = "receipt", "Receipt"
         PAYMENT = "payment", "Payment"
+        CONTRA = "contra", "Contra"
         EXPENSE = "expense", "Expense"
         RETURN = "return", "Return"
 
@@ -426,3 +428,247 @@ class MoneyReceipt(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Money receipts cannot be deleted.")
+
+
+class ExpenseRecord(models.Model):
+    class Settlement(models.TextChoices):
+        PAID = "paid", "Paid now"
+        PAYABLE = "payable", "Pay later"
+
+    business = models.ForeignKey(
+        Business, on_delete=models.CASCADE, related_name="expense_records"
+    )
+    number = models.CharField(max_length=8)
+    expense_date = models.DateField()
+    payee = models.ForeignKey(
+        Party,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="expense_records",
+    )
+    expense_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, related_name="expense_records"
+    )
+    settlement = models.CharField(max_length=10, choices=Settlement.choices)
+    payment_account = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="direct_expense_records",
+    )
+    payable_account = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="accrued_expense_records",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    description = models.CharField(max_length=255)
+    external_reference = models.CharField(max_length=80, blank=True)
+    journal_entry = models.OneToOneField(
+        JournalEntry, on_delete=models.PROTECT, related_name="expense_record"
+    )
+    voucher = models.OneToOneField(
+        Voucher, on_delete=models.PROTECT, related_name="expense_record"
+    )
+    idempotency_key = models.UUIDField(default=uuid.uuid4)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="expense_records_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "number"],
+                name="unique_business_expense_number",
+            ),
+            models.UniqueConstraint(
+                fields=["business", "idempotency_key"],
+                name="unique_business_expense_idempotency",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(number__regex=r"^[0-9]{8}$"),
+                name="expense_number_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="expense_positive_amount",
+            ),
+        ]
+        ordering = ["-expense_date", "-id"]
+
+    def __str__(self):
+        return f"{self.number} — {self.description} ({self.amount:.2f})"
+
+    @property
+    def paid_amount(self):
+        if self.settlement == self.Settlement.PAID:
+            return self.amount
+        return sum((payment.amount for payment in self.payments.all()), Decimal("0.00"))
+
+    @property
+    def balance_due(self):
+        return max(self.amount - self.paid_amount, Decimal("0.00"))
+
+    @property
+    def payment_status(self):
+        if self.balance_due <= 0:
+            return "paid"
+        if self.paid_amount > 0:
+            return "partial"
+        return "unpaid"
+
+    @property
+    def can_pay(self):
+        return self.settlement == self.Settlement.PAYABLE and self.balance_due > 0
+
+    def clean(self):
+        if self.number and (len(self.number) != 8 or not self.number.isdigit()):
+            raise ValidationError({"number": "Expense number must contain eight digits."})
+        for field in (
+            "payee", "expense_account", "payment_account", "payable_account",
+            "journal_entry", "voucher",
+        ):
+            value = getattr(self, field, None)
+            if value and value.business_id != self.business_id:
+                raise ValidationError(
+                    f"Expense {field.replace('_', ' ')} must belong to the same business."
+                )
+        if self.expense_account_id and self.expense_account.account_type != Account.Type.EXPENSE:
+            raise ValidationError("Expense category must be an expense account.")
+        liquid_roles = {
+            Account.SystemRole.CASH,
+            Account.SystemRole.BANK,
+            Account.SystemRole.MOBILE_MONEY,
+        }
+        if self.settlement == self.Settlement.PAID:
+            if not self.payment_account_id or self.payment_account.system_role not in liquid_roles:
+                raise ValidationError("Paid expenses require a Cash, Bank, or Mobile Financial Services account.")
+            if self.payable_account_id:
+                raise ValidationError("A paid expense cannot use a payable account.")
+        elif self.settlement == self.Settlement.PAYABLE:
+            if not self.payee_id:
+                raise ValidationError("A pay-later expense requires a payee.")
+            if (
+                not self.payable_account_id
+                or self.payable_account.system_role != Account.SystemRole.ACCOUNTS_PAYABLE
+            ):
+                raise ValidationError("Pay-later expenses require the Accounts Payable account.")
+            if self.payment_account_id:
+                raise ValidationError("A pay-later expense cannot have an immediate payment account.")
+        if self.journal_entry_id and not self.journal_entry.posted:
+            raise ValidationError("An expense requires a posted journal entry.")
+        if self.voucher_id:
+            if self.voucher.voucher_type != Voucher.Type.EXPENSE:
+                raise ValidationError("An expense requires an expense voucher.")
+            if self.voucher.total != self.amount:
+                raise ValidationError("Expense and voucher amounts must match.")
+            if self.voucher.journal_entry_id != self.journal_entry_id:
+                raise ValidationError("Expense voucher must use the expense journal entry.")
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Posted expenses cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Posted expenses cannot be deleted.")
+
+
+class ExpensePayment(models.Model):
+    business = models.ForeignKey(
+        Business, on_delete=models.CASCADE, related_name="expense_payments"
+    )
+    expense = models.ForeignKey(
+        ExpenseRecord, on_delete=models.PROTECT, related_name="payments"
+    )
+    number = models.CharField(max_length=8)
+    payment_date = models.DateField()
+    payment_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, related_name="expense_payments"
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    journal_entry = models.OneToOneField(
+        JournalEntry, on_delete=models.PROTECT, related_name="expense_payment"
+    )
+    voucher = models.OneToOneField(
+        Voucher, on_delete=models.PROTECT, related_name="expense_payment"
+    )
+    notes = models.TextField(blank=True)
+    idempotency_key = models.UUIDField(default=uuid.uuid4)
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="expense_payments_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "number"],
+                name="unique_business_expense_payment_number",
+            ),
+            models.UniqueConstraint(
+                fields=["business", "idempotency_key"],
+                name="unique_business_expense_payment_idempotency",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(number__regex=r"^[0-9]{8}$"),
+                name="expense_payment_number_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="expense_payment_positive_amount",
+            ),
+        ]
+        ordering = ["payment_date", "id"]
+
+    def clean(self):
+        for field in ("expense", "payment_account", "journal_entry", "voucher"):
+            value = getattr(self, field, None)
+            if value and value.business_id != self.business_id:
+                raise ValidationError(
+                    f"Expense payment {field.replace('_', ' ')} must belong to the same business."
+                )
+        if self.expense_id and self.expense.settlement != ExpenseRecord.Settlement.PAYABLE:
+            raise ValidationError("Payments can be allocated only to pay-later expenses.")
+        if self.payment_account_id and self.payment_account.system_role not in {
+            Account.SystemRole.CASH,
+            Account.SystemRole.BANK,
+            Account.SystemRole.MOBILE_MONEY,
+        }:
+            raise ValidationError("Payment account must be Cash, Bank, or Mobile Financial Services.")
+        if self.journal_entry_id and not self.journal_entry.posted:
+            raise ValidationError("An expense payment requires a posted journal entry.")
+        if self.voucher_id:
+            if self.voucher.voucher_type != Voucher.Type.PAYMENT:
+                raise ValidationError("An expense payment requires a payment voucher.")
+            if self.voucher.total != self.amount:
+                raise ValidationError("Expense payment and voucher amounts must match.")
+            if self.voucher.journal_entry_id != self.journal_entry_id:
+                raise ValidationError("Payment voucher must use the payment journal entry.")
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Posted expense payments cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Posted expense payments cannot be deleted.")

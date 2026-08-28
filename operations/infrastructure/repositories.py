@@ -6,6 +6,11 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from accounting.application.services import (
+    CreateMoneyReceiptCommand,
+    create_money_receipt,
+)
+from accounting.infrastructure.repositories import DjangoMoneyReceiptRepository
 from accounting.models import Account, FiscalPeriod, JournalEntry, JournalLine, Voucher
 from core.models import Product, StockMovement
 from core.infrastructure.numbering import allocate_reference_number
@@ -176,6 +181,15 @@ class DjangoTradeDocumentRepository:
         )
         voucher.full_clean()
         voucher.save()
+        if document.kind == TradeDocument.Kind.SALE:
+            create_money_receipt(
+                CreateMoneyReceiptCommand(
+                    voucher_id=voucher.pk,
+                    preferred_number=f"MR-{document.number}",
+                    payment_account_id=document.debit_account_id,
+                ),
+                DjangoMoneyReceiptRepository(),
+            )
 
         updated = TradeDocument.objects.filter(
             pk=document.pk, status=TradeDocument.Status.DRAFT

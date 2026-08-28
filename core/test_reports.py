@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from accounting.models import Account, FiscalPeriod, JournalEntry, Voucher
+from accounting.models import Account, FiscalPeriod, JournalEntry, MoneyReceipt, Voucher
 from core.application.services import CONTACTS_VIEW
 from core.models import Business, Membership, Party, Role
 from operations.models import TradeDocument
@@ -86,6 +86,7 @@ class BusinessReportTests(TestCase):
             code="1010",
             name="Cash",
             account_type=Account.Type.ASSET,
+            system_role=Account.SystemRole.CASH,
         )
         self.sales = Account.objects.create(
             business=self.business,
@@ -129,6 +130,7 @@ class BusinessReportTests(TestCase):
             code="1010",
             name="Cash",
             account_type=Account.Type.ASSET,
+            system_role=Account.SystemRole.CASH,
         )
         other_sales = Account.objects.create(
             business=self.other,
@@ -168,6 +170,15 @@ class BusinessReportTests(TestCase):
             notes="Cash received",
             voucher_date=date(2026, 8, 22),
         )
+        self.money_receipt = MoneyReceipt.objects.create(
+            business=self.business,
+            number="MR-1",
+            voucher=self.receipt,
+            party=self.customer,
+            payment_account=self.cash,
+            amount=Decimal("200.00"),
+            receipt_date=date(2026, 8, 22),
+        )
         sale_journal = JournalEntry.objects.create(
             business=self.business,
             period=self.period,
@@ -194,7 +205,7 @@ class BusinessReportTests(TestCase):
             entry_date=date(2026, 8, 22),
             posted=True,
         )
-        Voucher.objects.create(
+        hidden_voucher = Voucher.objects.create(
             business=self.other,
             voucher_type=Voucher.Type.RECEIPT,
             number="MR-HIDDEN",
@@ -203,11 +214,23 @@ class BusinessReportTests(TestCase):
             total=Decimal("999.00"),
             voucher_date=date(2026, 8, 22),
         )
+        MoneyReceipt.objects.create(
+            business=self.other,
+            number="MR-HIDDEN",
+            voucher=hidden_voucher,
+            party=hidden_party,
+            payment_account=other_cash,
+            amount=Decimal("999.00"),
+            receipt_date=date(2026, 8, 22),
+        )
         self.client.login(username="report-owner", password="password")
 
     def test_contact_report_filters_types_and_is_tenant_scoped(self):
         response = self.client.get(reverse("contact-report"), {"kind": "customer"})
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="report-summary"')
+        self.assertContains(response, 'class="report-filter-bar"')
+        self.assertContains(response, 'class="report-table"')
         self.assertContains(response, "Amina Customer")
         self.assertContains(response, "Combined Trading")
         self.assertNotContains(response, "Bengal Supplier")
@@ -226,6 +249,9 @@ class BusinessReportTests(TestCase):
 
     def test_invoice_report_contains_only_posted_tenant_sales(self):
         response = self.client.get(reverse("invoice-report"))
+        self.assertContains(response, "Net invoice value")
+        self.assertContains(response, "Reporting period")
+        self.assertContains(response, 'class="report-row-action"')
         self.assertContains(response, "26000001")
         self.assertContains(response, "450.00")
         self.assertNotContains(response, "26000002")
@@ -245,6 +271,9 @@ class BusinessReportTests(TestCase):
 
     def test_money_receipt_report_excludes_other_voucher_types_and_tenants(self):
         response = self.client.get(reverse("money-receipt-report"))
+        self.assertContains(response, "Amount received")
+        self.assertContains(response, "Immutable evidence")
+        self.assertContains(response, 'class="report-source"')
         self.assertContains(response, "MR-1")
         self.assertNotContains(response, "S-NOT-RECEIPT")
         self.assertNotContains(response, "MR-HIDDEN")
@@ -254,14 +283,18 @@ class BusinessReportTests(TestCase):
         pdf_response = self.client.get(reverse("money-receipt-report-pdf"))
         self.assertTrue(pdf_response.content.startswith(b"%PDF"))
         document = self.client.get(
-            reverse("money-receipt-document-pdf", args=[self.receipt.pk])
+            reverse("money-receipt-document-pdf", args=[self.money_receipt.pk])
         )
         self.assertTrue(document.content.startswith(b"%PDF"))
 
     def test_report_permissions_are_enforced_per_domain(self):
         self.client.logout()
         self.client.login(username="contact-viewer", password="password")
-        self.assertEqual(self.client.get(reverse("report-index")).status_code, 200)
+        index = self.client.get(reverse("report-index"))
+        self.assertEqual(index.status_code, 200)
+        self.assertContains(index, 'class="panel data-panel report-library"')
+        self.assertContains(index, "Contact directory")
+        self.assertNotContains(index, "Invoice register")
         self.assertEqual(self.client.get(reverse("contact-report")).status_code, 200)
         self.assertEqual(self.client.get(reverse("invoice-report")).status_code, 403)
         self.assertEqual(self.client.get(reverse("money-receipt-report")).status_code, 403)

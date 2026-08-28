@@ -24,7 +24,7 @@ The first release is single-location per business, BDT-first, Bangladesh timezon
 - Super Admin-managed chart-of-accounts templates with a seeded 43-account default
 - Draft and posted sales/purchases with product or service line items
 - Fixed-amount or percentage sale discounts with net invoice and journal totals
-- Atomic sales/purchase posting into journals, vouchers, stock movements, and weighted-average cost of goods sold
+- Atomic sales/purchase posting into journals, vouchers, stock movements, weighted-average cost of goods sold, and money receipts for immediately paid sales
 - Filtered sales/purchase registers and deterministic CSV/PDF exports
 - Tenant-scoped contact, posted invoice, and money receipt registers with CSV/PDF exports
 - Printable sales invoices and money receipts linked to immutable posted records
@@ -126,13 +126,14 @@ Open `http://127.0.0.1:8000/admin/` for the initial management surface and `http
 - Sales/purchase document PDF, register PDF, and CSV export
 - Customer/supplier directory, posted invoice register, and receipt-voucher register
 - Individual printable sales invoices and money receipts
+- Automatic immutable money receipts when a sale is posted to an account mapped as Cash, Bank, or Mobile Financial Services
 
-Sales and purchase posting is transactional and idempotent. A successful post creates the balanced journal entry, immutable voucher, and applicable stock movements together. Sales may apply one fixed-amount or percentage discount; receivable, revenue, voucher, invoice, and report totals use the net amount after discount. Product sales debit Cost of Goods Sold and credit Inventory using the moving weighted-average cost of stock on hand, so a commercial discount never changes inventory cost; service lines do not affect stock or COGS. A failed validation—including an excessive discount, insufficient sale stock, missing required posting roles, or a locked period—rolls back every side effect. Draft sales and purchases in open periods can be deleted after explicit confirmation; posted or locked-period documents cannot be deleted, and a deleted draft's automatic number is never reused.
+Sales and purchase posting is transactional and idempotent. A successful post creates the balanced journal entry, immutable voucher, and applicable stock movements together. An immediately paid sale—identified by selecting a debit account mapped as Cash, Bank, or Mobile Financial Services—also creates one immutable money receipt with the net sale amount. Posting a credit sale to Accounts Receivable remains invoice-only; its receipt is created later from a posted receipt voucher when payment is recorded. Sales may apply one fixed-amount or percentage discount; receivable, revenue, voucher, invoice, receipt, and report totals use the net amount after discount. Product sales debit Cost of Goods Sold and credit Inventory using the moving weighted-average cost of stock on hand, so a commercial discount never changes inventory cost; service lines do not affect stock or COGS. A failed validation—including an excessive discount, insufficient sale stock, missing required posting roles, or a locked period—rolls back every side effect. Draft sales and purchases in open periods can be deleted after explicit confirmation; posted or locked-period documents cannot be deleted, and a deleted draft's automatic number is never reused.
 
 ### Remaining MVP work
 
 - Sales and purchase returns
-- Receipts, supplier payments, expenses, and partial/split payment allocation
+- Customer receipt allocation, supplier payments, expenses, and partial/split settlements
 - Controlled reversal workflow for posted transactions
 - Receivable, payable, cashflow, and profit reports
 - Optional VAT/GST configuration and calculations
@@ -197,7 +198,7 @@ Business Admins receive all permissions for their business. Employee roles use t
 - `sales.view`, `sales.manage`, `sales.post`
 - `purchases.view`, `purchases.manage`, `purchases.post`
 
-Journal entries are created as drafts with nested lines and posted through `POST /api/v1/journal-entries/{id}/post/`. Sales and purchases use `/api/v1/sales/` and `/api/v1/purchases/`; each supports nested lines and a `POST /{id}/post/` action. Sales accept `discount_type` as `none`, `fixed`, or `percentage` plus a decimal `discount_value`; `subtotal`, `discount_amount`, and `total` are calculated read-only fields. Purchases reject discount values. Posting is atomic and idempotent, rejects invalid stock or locked periods, and posted financial history cannot be edited or deleted. Stock movements are append-only through the API. The server-rendered interface uses the same tenant and permission policy.
+Journal entries are created as drafts with nested lines and posted through `POST /api/v1/journal-entries/{id}/post/`. Sales and purchases use `/api/v1/sales/` and `/api/v1/purchases/`; each supports nested lines and a `POST /{id}/post/` action. Sales accept `discount_type` as `none`, `fixed`, or `percentage` plus a decimal `discount_value`; `subtotal`, `discount_amount`, and `total` are calculated read-only fields. Purchases reject discount values. A posted sale response exposes `money_receipt_number`: it contains the generated receipt number for an immediate Cash/Bank/Mobile Financial Services sale and is `null` for a credit sale. Posting is atomic and idempotent, rejects invalid stock or locked periods, and posted financial history cannot be edited or deleted. Stock movements are append-only through the API. The server-rendered interface uses the same tenant and permission policy.
 
 Sales, purchases, and stock movements receive an immutable tenant-wide automatic number when first saved. The format is `YYNNNNNN`: the transaction year followed by a six-digit sequence, such as `26000001`. Sales, purchases, and movements share the same business/year counter so a number identifies exactly one operational record; each business has an independent counter, and the sequence restarts at `000001` in January. The two-digit year format supports transaction years 2000–2099. Client-supplied numbers are ignored, while the optional stock movement source reference remains available separately. Register screens, search, APIs, CSV exports, PDFs, journals, and vouchers use the generated number.
 
@@ -205,7 +206,7 @@ Returns, payment allocation, advanced financial reports, and the optional React 
 
 ## Current user interface
 
-The authenticated Django interface is the operational delivery surface for the implemented foundation. It includes a responsive permission-aware navigation shell, business switching, overview metrics, searchable and paginated contacts/catalog tables, append-only stock movement entry, sales and purchase workflows, and accounting workflows for chart templates, tenant accounts, editable fiscal periods, draft journals, posting, and vouchers. The **Reports** area provides filtered contact directories, posted invoice registers, and money receipt registers on screen and as CSV/PDF, with individual printable invoice and receipt documents. Open period boundaries may be changed only when they remain non-overlapping and include every existing entry; locked boundaries remain protected until the period is reopened.
+The authenticated Django interface is the operational delivery surface for the implemented foundation. It includes a responsive permission-aware navigation shell, business switching, overview metrics, searchable and paginated contacts/catalog tables, append-only stock movement entry, sales and purchase workflows, and accounting workflows for chart templates, tenant accounts, editable fiscal periods, draft journals, posting, and vouchers. The **Reports** area provides filtered contact directories, posted invoice registers, and money receipt registers on screen and as CSV/PDF, with individual printable invoice and receipt documents. An eligible posted sale displays a **Download money receipt** action beside its journal link. Open period boundaries may be changed only when they remain non-overlapping and include every existing entry; locked boundaries remain protected until the period is reopened.
 
 Sales and purchases are available at `/sales/` and `/purchases/`. Users can filter registers by state and date, save editable automatically numbered drafts, add split lines, review posting accounts, confirm posting, follow the resulting journal, and export documents or filtered registers as PDF/CSV. The stock movement register also supports number/source search, date and direction filters, and PDF/CSV export.
 

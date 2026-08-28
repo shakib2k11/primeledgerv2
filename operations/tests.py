@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounting.models import Account, FiscalPeriod, JournalEntry, Voucher
+from accounting.models import Account, FiscalPeriod, JournalEntry, MoneyReceipt, Voucher
 from core.application.services import SALES_VIEW
 from core.infrastructure.numbering import allocate_reference_number
 from core.models import Business, InventoryUnit, Membership, Party, Product, Role, StockMovement
@@ -58,6 +58,11 @@ class TradeWorkflowTests(TestCase):
         self.receivable = Account.objects.create(
             business=self.business, code="1100", name="Receivable", account_type=Account.Type.ASSET,
             system_role=Account.SystemRole.ACCOUNTS_RECEIVABLE,
+        )
+        self.cash = Account.objects.create(
+            business=self.business, code="1010", name="Cash in Hand",
+            account_type=Account.Type.ASSET,
+            system_role=Account.SystemRole.CASH,
         )
         self.payable = Account.objects.create(
             business=self.business, code="2100", name="Payable", account_type=Account.Type.LIABILITY,
@@ -154,6 +159,7 @@ class TradeWorkflowTests(TestCase):
             ).exists()
         )
         self.assertEqual(Voucher.objects.filter(business=self.business).count(), 1)
+        self.assertFalse(MoneyReceipt.objects.filter(business=self.business).exists())
         movement = StockMovement.objects.get(
             reference=document.number,
             direction=StockMovement.Direction.OUT,
@@ -319,6 +325,49 @@ class TradeWorkflowTests(TestCase):
         )
         self.assertEqual(document.journal_entry.voucher.total, Decimal("216.00"))
 
+    def test_immediate_paid_sale_generates_one_immutable_money_receipt(self):
+        document = self.make_document(
+            discount_type=TradeDocument.DiscountType.FIXED,
+            discount_value="20.00",
+        )
+        document.debit_account = self.cash
+        document.save(update_fields=["debit_account"])
+        repository = DjangoTradeDocumentRepository()
+
+        repository.post(document_id=document.pk, business_id=self.business.pk)
+        repository.post(document_id=document.pk, business_id=self.business.pk)
+
+        document.refresh_from_db()
+        receipt = MoneyReceipt.objects.get(
+            business=self.business,
+            voucher__journal_entry=document.journal_entry,
+        )
+        self.assertEqual(receipt.number, f"MR-{document.number}")
+        self.assertEqual(receipt.amount, Decimal("220.00"))
+        self.assertEqual(receipt.party, self.customer)
+        self.assertEqual(receipt.payment_account, self.cash)
+        self.assertEqual(receipt.voucher.voucher_type, Voucher.Type.SALE)
+        self.assertEqual(MoneyReceipt.objects.filter(voucher=receipt.voucher).count(), 1)
+        receipt_number = receipt.number
+        receipt.number = "CHANGED"
+        with self.assertRaises(ValidationError):
+            receipt.save()
+
+        detail = self.client.get(reverse("sale-detail", args=[document.pk]))
+        self.assertContains(detail, "Download money receipt")
+        pdf = self.client.get(reverse("money-receipt-document-pdf", args=[receipt.pk]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+
+        api = APIClient()
+        api.force_authenticate(self.user)
+        response = api.get(
+            f"/api/v1/sales/{document.pk}/",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["money_receipt_number"], receipt_number)
+
     def test_ui_create_post_and_exports(self):
         response = self.client.post(
             reverse("sale-create"),
@@ -399,6 +448,21 @@ class TradeWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Discount must be less than the sale subtotal")
         self.assertFalse(TradeDocument.objects.exists())
+
+    def test_discount_controls_follow_the_sale_line_grid_only(self):
+        sale_response = self.client.get(reverse("sale-create"))
+        self.assertEqual(sale_response.status_code, 200)
+        sale_html = sale_response.content.decode()
+        self.assertContains(sale_response, "Sale adjustment")
+        self.assertGreater(
+            sale_html.index("id_discount_type"),
+            sale_html.index("data-formset-lines"),
+        )
+
+        purchase_response = self.client.get(reverse("purchase-create"))
+        self.assertEqual(purchase_response.status_code, 200)
+        self.assertNotContains(purchase_response, "Sale adjustment")
+        self.assertNotContains(purchase_response, "id_discount_type")
 
     def test_api_assigns_read_only_automatic_number(self):
         api = APIClient()

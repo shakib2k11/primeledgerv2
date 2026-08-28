@@ -44,7 +44,10 @@ class TradeDocumentForm(forms.ModelForm):
             self.fields["debit_account"].initial = role_accounts.get(initial_roles[0])
             self.fields["credit_account"].initial = role_accounts.get(initial_roles[1])
         if kind == TradeDocument.Kind.SALE:
-            self.fields["debit_account"].help_text = "Usually Accounts Receivable or Cash."
+            self.fields["debit_account"].help_text = (
+                "Use Accounts Receivable for credit sales. Selecting an account mapped "
+                "as Cash, Bank, or Mobile Financial Services generates a money receipt when posted."
+            )
             self.fields["credit_account"].help_text = "Usually Sales Revenue."
             self.fields["discount_type"].required = False
             self.fields["discount_type"].help_text = "Apply one discount to the complete sale."

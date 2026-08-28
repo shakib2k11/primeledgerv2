@@ -1,13 +1,13 @@
 from decimal import Decimal
 
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
 from rest_framework.response import Response
 
-from accounting.models import Account, FiscalPeriod
+from accounting.models import Account, FiscalPeriod, MoneyReceipt
 from core.api import TenantViewSetMixin, validation_detail
 from core.application.services import (
     PURCHASES_MANAGE, PURCHASES_POST, PURCHASES_VIEW,
@@ -40,6 +40,7 @@ class TradeDocumentSerializer(serializers.ModelSerializer):
     kind = serializers.CharField(read_only=True)
     party_name = serializers.CharField(source="party.name", read_only=True)
     journal_entry = serializers.PrimaryKeyRelatedField(read_only=True)
+    money_receipt_number = serializers.SerializerMethodField()
 
     class Meta:
         model = TradeDocument
@@ -75,6 +76,14 @@ class TradeDocumentSerializer(serializers.ModelSerializer):
         if self.instance is None and not lines:
             raise serializers.ValidationError("Add at least one product or service line.")
         return attrs
+
+    def get_money_receipt_number(self, instance):
+        if not instance.journal_entry_id:
+            return None
+        try:
+            return instance.journal_entry.voucher.money_receipt.number
+        except (AttributeError, ObjectDoesNotExist):
+            return None
 
     @transaction.atomic
     def create(self, validated_data):
@@ -161,7 +170,9 @@ class BaseTradeDocumentViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = TradeDocument.objects.filter(
             business=self.business, kind=self.kind
-        ).select_related("party", "period", "journal_entry").prefetch_related("lines__product")
+        ).select_related(
+            "party", "period", "journal_entry__voucher__money_receipt"
+        ).prefetch_related("lines__product")
         state = self.request.query_params.get("state")
         if state in TradeDocument.Status.values:
             queryset = queryset.filter(status=state)

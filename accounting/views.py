@@ -15,8 +15,16 @@ from accounting.forms import (
 )
 from accounting.models import Account, FiscalPeriod, JournalEntry, Voucher
 from accounting.models import ChartOfAccountsTemplate
-from accounting.application.services import ApplyAccountTemplateCommand, apply_account_template
-from accounting.infrastructure.repositories import DjangoAccountTemplateRepository
+from accounting.application.services import (
+    ApplyAccountTemplateCommand,
+    CreateMoneyReceiptCommand,
+    apply_account_template,
+    create_money_receipt,
+)
+from accounting.infrastructure.repositories import (
+    DjangoAccountTemplateRepository,
+    DjangoMoneyReceiptRepository,
+)
 from core.application.services import (
     ACCOUNTING_MANAGE,
     ACCOUNTING_POST,
@@ -336,7 +344,21 @@ def voucher_create(request):
         voucher.voucher_date = voucher.journal_entry.entry_date
         voucher.full_clean()
         voucher.save()
-        messages.success(request, "Voucher created from the posted journal.")
+        receipt_result = None
+        if voucher.voucher_type == Voucher.Type.RECEIPT:
+            receipt_result = create_money_receipt(
+                CreateMoneyReceiptCommand(
+                    voucher_id=voucher.pk,
+                    preferred_number=voucher.number,
+                ),
+                DjangoMoneyReceiptRepository(),
+            )
+        detail = (
+            f" Money receipt {receipt_result.number} is ready."
+            if receipt_result
+            else ""
+        )
+        messages.success(request, f"Voucher created from the posted journal.{detail}")
         return redirect("voucher-list")
     return render(request, "core/record-form.html", {
         "business": business, "form": form, "title": "Create voucher",

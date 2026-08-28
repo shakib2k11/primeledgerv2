@@ -11,3 +11,5 @@ SYSTEM_ROLE_ACCOUNT_TYPES = {
     "service_revenue": "income",
     "cost_of_goods_sold": "expense",
 }
+
+LIQUID_ACCOUNT_SYSTEM_ROLES = frozenset({"cash", "bank", "mobile_money"})

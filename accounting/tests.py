@@ -15,6 +15,7 @@ from accounting.models import (
     FiscalPeriod,
     JournalEntry,
     JournalLine,
+    MoneyReceipt,
     Voucher,
 )
 from core.application.services import ACCOUNTING_MANAGE, ACCOUNTING_POST, ACCOUNTING_VIEW
@@ -38,7 +39,8 @@ class AccountingInvariantTests(TestCase):
             ends_on=date(2026, 12, 31),
         )
         self.cash = Account.objects.create(
-            business=self.business, code="1000", name="Cash", account_type=Account.Type.ASSET
+            business=self.business, code="1000", name="Cash", account_type=Account.Type.ASSET,
+            system_role=Account.SystemRole.CASH,
         )
         self.sales = Account.objects.create(
             business=self.business, code="4000", name="Sales", account_type=Account.Type.INCOME
@@ -298,7 +300,8 @@ class AccountingUiTests(TestCase):
             ends_on=date(2026, 12, 31),
         )
         self.cash = Account.objects.create(
-            business=self.business, code="1000", name="Cash", account_type=Account.Type.ASSET
+            business=self.business, code="1000", name="Cash", account_type=Account.Type.ASSET,
+            system_role=Account.SystemRole.CASH,
         )
         self.sales = Account.objects.create(
             business=self.business, code="4000", name="Sales", account_type=Account.Type.INCOME
@@ -419,3 +422,47 @@ class AccountingUiTests(TestCase):
         )
         self.assertRedirects(response, reverse("voucher-list"))
         self.assertTrue(Voucher.objects.filter(number="V-UI-1", total=Decimal("75.00")).exists())
+
+    def test_receipt_voucher_generates_persisted_money_receipt(self):
+        entry = JournalEntry.objects.create(
+            business=self.business,
+            period=self.period,
+            reference="RECEIPT:UI-2",
+            description="Customer payment",
+            entry_date=date(2026, 8, 26),
+            created_by=self.user,
+        )
+        JournalLine.objects.create(
+            entry=entry,
+            account=self.cash,
+            description="Cash received",
+            debit=Decimal("125.00"),
+        )
+        JournalLine.objects.create(
+            entry=entry,
+            account=self.sales,
+            description="Settlement offset",
+            credit=Decimal("125.00"),
+        )
+        DjangoJournalRepository().post(
+            entry_id=entry.pk,
+            business_id=self.business.pk,
+        )
+
+        response = self.client.post(
+            reverse("voucher-create"),
+            {
+                "voucher_type": Voucher.Type.RECEIPT,
+                "number": "MR-UI-2",
+                "party": "",
+                "journal_entry": entry.pk,
+                "notes": "Cash received",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        receipt = MoneyReceipt.objects.get(number="MR-UI-2", business=self.business)
+        self.assertEqual(receipt.amount, Decimal("125.00"))
+        self.assertEqual(receipt.payment_account, self.cash)
+        self.assertContains(response, "Money receipt MR-UI-2 is ready")

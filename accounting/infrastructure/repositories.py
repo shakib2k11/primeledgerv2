@@ -3,7 +3,14 @@ from dataclasses import dataclass
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from accounting.models import Account, AccountTemplateApplication, ChartOfAccountsTemplate
+from accounting.domain.policies import LIQUID_ACCOUNT_SYSTEM_ROLES
+from accounting.models import (
+    Account,
+    AccountTemplateApplication,
+    ChartOfAccountsTemplate,
+    MoneyReceipt,
+    Voucher,
+)
 from core.models import Business
 
 
@@ -85,3 +92,76 @@ class DjangoAccountTemplateRepository:
             matched_count=matched,
         )
         return TemplateApplicationResult(created=created, matched=matched)
+
+
+@dataclass(frozen=True)
+class MoneyReceiptResult:
+    receipt_id: int
+    number: str
+    created: bool
+
+
+class DjangoMoneyReceiptRepository:
+    @transaction.atomic
+    def create_for_voucher(
+        self,
+        *,
+        voucher_id: int,
+        preferred_number: str,
+        payment_account_id: int | None = None,
+    ):
+        voucher = (
+            Voucher.objects.select_for_update()
+            .select_related("business", "journal_entry")
+            .get(pk=voucher_id)
+        )
+        existing = MoneyReceipt.objects.filter(voucher=voucher).first()
+        if existing:
+            return MoneyReceiptResult(existing.pk, existing.number, False)
+
+        payment_account = None
+        if payment_account_id:
+            payment_account = Account.objects.filter(
+                pk=payment_account_id,
+                business=voucher.business,
+                system_role__in=LIQUID_ACCOUNT_SYSTEM_ROLES,
+            ).first()
+        if payment_account is None:
+            payment_account = (
+                Account.objects.filter(
+                    journal_lines__entry=voucher.journal_entry,
+                    journal_lines__debit__gt=0,
+                    business=voucher.business,
+                    system_role__in=LIQUID_ACCOUNT_SYSTEM_ROLES,
+                )
+                .order_by("journal_lines__id")
+                .first()
+            )
+        if voucher.voucher_type == Voucher.Type.SALE and payment_account is None:
+            return None
+        if voucher.voucher_type not in {Voucher.Type.SALE, Voucher.Type.RECEIPT}:
+            return None
+
+        Business.objects.select_for_update().get(pk=voucher.business_id)
+        base_number = preferred_number.strip()[:40]
+        candidate = base_number
+        suffix = 2
+        while MoneyReceipt.objects.filter(
+            business=voucher.business,
+            number=candidate,
+        ).exists():
+            marker = f"-{suffix}"
+            candidate = f"{base_number[:40 - len(marker)]}{marker}"
+            suffix += 1
+        receipt = MoneyReceipt(
+            business=voucher.business,
+            number=candidate,
+            voucher=voucher,
+            party=voucher.party,
+            payment_account=payment_account,
+            amount=voucher.total,
+            receipt_date=voucher.voucher_date,
+        )
+        receipt.full_clean()
+        receipt.save()
+        return MoneyReceiptResult(receipt.pk, receipt.number, True)

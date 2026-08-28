@@ -15,6 +15,7 @@ from django.utils import timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
+from accounting.models import MoneyReceipt
 from core.application.services import (
     PURCHASES_MANAGE,
     PURCHASES_POST,
@@ -178,8 +179,19 @@ def document_detail(request, kind, pk):
         ).prefetch_related("lines__product"),
         business=business, kind=kind, pk=pk,
     )
+    money_receipt = (
+        MoneyReceipt.objects.filter(
+            business=business,
+            voucher__journal_entry_id=document.journal_entry_id,
+        ).first()
+        if document.journal_entry_id
+        else None
+    )
     return render(request, "operations/document-detail.html", {
-        "business": business, "document": document, "kind": kind
+        "business": business,
+        "document": document,
+        "kind": kind,
+        "money_receipt": money_receipt,
     })
 
 
@@ -245,7 +257,7 @@ def document_post(request, kind, pk):
         messages.error(request, "Confirm posting before continuing.")
         return redirect(route_name(kind, "detail"), pk=pk)
     try:
-        post_trade_document(
+        posted_document = post_trade_document(
             PostTradeDocumentCommand(document_id=pk, business_id=business.pk),
             DjangoTradeDocumentRepository(),
         )
@@ -253,7 +265,15 @@ def document_post(request, kind, pk):
         detail = " ".join(exc.messages) if isinstance(exc, ValidationError) else "A financial reference already exists."
         messages.error(request, detail)
         return redirect(route_name(kind, "detail"), pk=pk)
-    messages.success(request, f"{document.get_kind_display()} posted successfully.")
+    money_receipt = MoneyReceipt.objects.filter(
+        business=business,
+        voucher__journal_entry_id=posted_document.journal_entry_id,
+    ).first()
+    detail = f" Money receipt {money_receipt.number} is ready." if money_receipt else ""
+    messages.success(
+        request,
+        f"{document.get_kind_display()} posted successfully.{detail}",
+    )
     return redirect(route_name(kind, "detail"), pk=pk)
 
 

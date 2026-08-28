@@ -342,3 +342,87 @@ class Voucher(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Financial vouchers cannot be deleted.")
+
+
+class MoneyReceipt(models.Model):
+    business = models.ForeignKey(
+        Business,
+        on_delete=models.CASCADE,
+        related_name="money_receipts",
+    )
+    number = models.CharField(max_length=40)
+    voucher = models.OneToOneField(
+        Voucher,
+        on_delete=models.PROTECT,
+        related_name="money_receipt",
+    )
+    party = models.ForeignKey(
+        Party,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="money_receipts",
+    )
+    payment_account = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="money_receipts",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    receipt_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "number"],
+                name="unique_business_money_receipt_number",
+            ),
+        ]
+        ordering = ["-receipt_date", "-id"]
+
+    def __str__(self):
+        return f"{self.number} ({self.amount:.2f})"
+
+    def clean(self):
+        from accounting.domain.policies import LIQUID_ACCOUNT_SYSTEM_ROLES
+
+        if self.voucher_id and self.voucher.business_id != self.business_id:
+            raise ValidationError("Money receipt and voucher must belong to the same business.")
+        if self.party_id and self.party.business_id != self.business_id:
+            raise ValidationError("Money receipt and party must belong to the same business.")
+        if self.payment_account_id and self.payment_account.business_id != self.business_id:
+            raise ValidationError("Money receipt payment account must belong to the same business.")
+        if self.voucher_id and not self.voucher.journal_entry.posted:
+            raise ValidationError("A money receipt requires a posted voucher journal.")
+        if self.voucher_id and self.amount != self.voucher.total:
+            raise ValidationError("Money receipt amount must match its voucher.")
+        if self.voucher_id and self.receipt_date != self.voucher.voucher_date:
+            raise ValidationError("Money receipt and voucher dates must match.")
+        if self.voucher_id and self.party_id != self.voucher.party_id:
+            raise ValidationError("Money receipt and voucher parties must match.")
+        if (
+            self.voucher_id
+            and self.voucher.voucher_type == Voucher.Type.SALE
+            and (
+                not self.payment_account_id
+                or self.payment_account.system_role not in LIQUID_ACCOUNT_SYSTEM_ROLES
+            )
+        ):
+            raise ValidationError(
+                "A sale money receipt requires a Cash, Bank, or Mobile Financial Services account."
+            )
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Money receipts cannot be edited after creation.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Money receipts cannot be deleted.")

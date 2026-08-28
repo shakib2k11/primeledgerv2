@@ -62,6 +62,7 @@
     {% if document.status == 'posted' %}
       <h2>Posted transaction</h2>
       <p>The journal, voucher, and stock movements were created atomically.</p>
+      {% if money_receipt %}<a class="button primary wide" href="{% url 'money-receipt-document-pdf' money_receipt.pk %}">Download money receipt</a>{% endif %}
       {% if document.journal_entry %}<a class="button secondary wide" href="{% url 'journal-detail' document.journal_entry.pk %}">View journal entry</a>{% endif %}
       <div class="assurance"><span>✓</span> Financial and stock history locked</div>
     {% else %}

@@ -12,9 +12,27 @@ from django.utils import timezone
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
 
-from accounting.models import Voucher
+from accounting.models import MoneyReceipt, Voucher
 from core.application.services import ACCOUNTING_VIEW, CONTACTS_VIEW, SALES_VIEW
 from core.models import Party
+from core.pdf import (
+    BORDER,
+    INK,
+    INK_SOFT,
+    MUTED,
+    PAGE_MARGIN,
+    SURFACE_SUBTLE,
+    TEAL,
+    TEAL_SOFT,
+    clean_text,
+    draw_document_header,
+    draw_empty_state,
+    draw_page_footer,
+    draw_report_header,
+    draw_report_total,
+    draw_table_header,
+    draw_table_row_background,
+)
 from core.views import authorize, is_authorized, request_business
 from operations.models import TradeDocument
 
@@ -53,23 +71,27 @@ def _write_csv_heading(writer, business, report_name, *, date_range=None):
     writer.writerow([])
 
 
-def _pdf_header(pdf, business, report_name, *, date_range=None, page_size=A4):
-    width, height = page_size
-    y = height - 42
-    pdf.setFont("Helvetica-Bold", 15)
-    pdf.drawString(38, y, business.name[:70])
-    y -= 20
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(38, y, report_name)
-    pdf.setFont("Helvetica", 8)
+def _pdf_header(
+    pdf,
+    business,
+    report_name,
+    *,
+    date_range=None,
+    page_size=A4,
+    page_number=1,
+):
+    metadata = []
     if date_range:
-        y -= 14
-        pdf.drawString(38, y, f"Date range: {date_range}")
-    y -= 14
-    pdf.drawString(38, y, f"Currency: {business.currency}")
-    y -= 14
-    pdf.drawString(38, y, f"Generated: {timezone.localdate():%d-%b-%Y}")
-    return width, height, y - 18
+        metadata.append(("Reporting period", date_range))
+    metadata.append(("Currency", business.currency))
+    return draw_report_header(
+        pdf,
+        business,
+        report_name,
+        page_size=page_size,
+        page_number=page_number,
+        metadata=metadata,
+    )
 
 
 def _contact_filters(request, business):
@@ -130,21 +152,20 @@ def _invoice_filters(request, business):
 def _receipt_filters(request, business):
     query = request.GET.get("q", "").strip()
     date_from, date_to = _date_filters(request)
-    receipts = Voucher.objects.filter(
+    receipts = MoneyReceipt.objects.filter(
         business=business,
-        voucher_type=Voucher.Type.RECEIPT,
-    ).select_related("party", "journal_entry")
+    ).select_related("party", "payment_account", "voucher__journal_entry")
     if query:
         receipts = receipts.filter(
             Q(number__icontains=query)
             | Q(party__name__icontains=query)
-            | Q(journal_entry__reference__icontains=query)
+            | Q(voucher__journal_entry__reference__icontains=query)
         )
     if date_from:
-        receipts = receipts.filter(voucher_date__gte=date_from)
+        receipts = receipts.filter(receipt_date__gte=date_from)
     if date_to:
-        receipts = receipts.filter(voucher_date__lte=date_to)
-    return receipts.order_by("-voucher_date", "-id"), {
+        receipts = receipts.filter(receipt_date__lte=date_to)
+    return receipts.order_by("-receipt_date", "-id"), {
         "query": query,
         "date_from": date_from,
         "date_to": date_to,
@@ -227,41 +248,80 @@ def contact_report_pdf(request):
     page_size = landscape(A4)
     pdf = canvas.Canvas(buffer, pagesize=page_size, pageCompression=1)
     pdf.setTitle(f"{business.name} contact directory")
+    pdf.setAuthor("Prime Ledger")
+    page_number = 1
     width, height, y = _pdf_header(
-        pdf, business, "Contact directory", page_size=page_size
+        pdf,
+        business,
+        "Contact directory",
+        page_size=page_size,
+        page_number=page_number,
     )
 
     def columns(current_y):
-        pdf.setFont("Helvetica-Bold", 8)
-        for x, label in ((38, "Contact"), (205, "Type"), (325, "Phone"), (430, "Email"), (610, "Opening balance"), (735, "Position")):
-            pdf.drawString(x, current_y, label)
-        pdf.line(38, current_y - 5, width - 38, current_y - 5)
-        return current_y - 17
+        return draw_table_header(
+            pdf,
+            current_y,
+            (
+                (PAGE_MARGIN, "Contact", "left"),
+                (210, "Relationship", "left"),
+                (325, "Phone", "left"),
+                (430, "Email", "left"),
+                (710, f"Opening ({business.currency})", "right"),
+                (748, "Position", "left"),
+            ),
+            width=width,
+        )
 
     y = columns(y)
-    pdf.setFont("Helvetica", 8)
     if not rows:
-        pdf.drawString(38, y, "No records for the selected filters.")
-    for party in rows:
-        if y < 42:
+        y = draw_empty_state(
+            pdf,
+            y,
+            "No contacts match the selected filters",
+            width=width,
+        )
+    for row_index, party in enumerate(rows):
+        if y < 55:
+            draw_page_footer(pdf, width=width, page_number=page_number)
             pdf.showPage()
+            page_number += 1
             _, _, y = _pdf_header(
-                pdf, business, "Contact directory", page_size=page_size
+                pdf,
+                business,
+                "Contact directory",
+                page_size=page_size,
+                page_number=page_number,
             )
             y = columns(y)
-            pdf.setFont("Helvetica", 8)
+        draw_table_row_background(
+            pdf,
+            y,
+            width=width,
+            row_index=row_index,
+            height=21,
+        )
         position = (
             "Settled" if party.opening_balance == 0
             else "Payable" if party.opening_balance_is_payable
             else "Receivable"
         )
-        pdf.drawString(38, y, party.name[:30])
-        pdf.drawString(205, y, party.get_kind_display()[:20])
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.8)
+        pdf.drawString(PAGE_MARGIN, y, clean_text(party.name, 31))
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7.5)
+        pdf.drawString(210, y, clean_text(party.get_kind_display(), 20))
         pdf.drawString(325, y, party.phone[:18] or "-")
-        pdf.drawString(430, y, party.email[:30] or "-")
+        pdf.drawString(430, y, clean_text(party.email, 32) or "-")
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.5)
         pdf.drawRightString(710, y, f"{party.opening_balance:.2f} {business.currency}")
+        pdf.setFillColor(TEAL if position == "Receivable" else INK_SOFT)
+        pdf.setFont("Helvetica-Bold", 7.3)
         pdf.drawString(735, y, position)
-        y -= 16
+        y -= 21
+    draw_page_footer(pdf, width=width, page_number=page_number)
     pdf.save()
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = 'attachment; filename="contact-directory.pdf"'
@@ -329,48 +389,90 @@ def invoice_report_pdf(request):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
     pdf.setTitle(f"{business.name} invoice register")
+    pdf.setAuthor("Prime Ledger")
+    page_number = 1
     width, height, y = _pdf_header(
-        pdf, business, "Invoice register", date_range=date_range
+        pdf,
+        business,
+        "Invoice register",
+        date_range=date_range,
+        page_number=page_number,
     )
 
     def columns(current_y):
-        pdf.setFont("Helvetica-Bold", 8)
-        pdf.drawString(38, current_y, "Invoice")
-        pdf.drawString(110, current_y, "Date")
-        pdf.drawString(180, current_y, "Customer")
-        pdf.drawRightString(430, current_y, "Subtotal")
-        pdf.drawRightString(495, current_y, "Discount")
-        pdf.drawRightString(width - 38, current_y, f"Total ({business.currency})")
-        pdf.line(38, current_y - 5, width - 38, current_y - 5)
-        return current_y - 17
+        return draw_table_header(
+            pdf,
+            current_y,
+            (
+                (PAGE_MARGIN, "Invoice", "left"),
+                (112, "Date", "left"),
+                (185, "Customer", "left"),
+                (430, "Subtotal", "right"),
+                (495, "Discount", "right"),
+                (width - PAGE_MARGIN, f"Net total ({business.currency})", "right"),
+            ),
+            width=width,
+        )
 
     y = columns(y)
-    pdf.setFont("Helvetica", 8)
     if not rows:
-        pdf.drawString(38, y, "No records for the selected filters.")
+        y = draw_empty_state(
+            pdf,
+            y,
+            "No posted invoices match the selected filters",
+            width=width,
+        )
     total = 0
-    for invoice in rows:
-        if y < 55:
+    for row_index, invoice in enumerate(rows):
+        if y < 72:
+            draw_page_footer(pdf, width=width, page_number=page_number)
             pdf.showPage()
+            page_number += 1
             _, _, y = _pdf_header(
-                pdf, business, "Invoice register", date_range=date_range
+                pdf,
+                business,
+                "Invoice register",
+                date_range=date_range,
+                page_number=page_number,
             )
             y = columns(y)
-            pdf.setFont("Helvetica", 8)
-        pdf.drawString(38, y, invoice.number)
-        pdf.drawString(110, y, invoice.document_date.strftime("%d-%b-%Y"))
-        pdf.drawString(180, y, invoice.party.name[:27])
+        draw_table_row_background(pdf, y, width=width, row_index=row_index)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.drawString(PAGE_MARGIN, y, invoice.number)
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7.5)
+        pdf.drawString(112, y, invoice.document_date.strftime("%d %b %Y"))
+        pdf.drawString(185, y, clean_text(invoice.party.name, 28))
         pdf.drawRightString(430, y, f"{invoice.subtotal:.2f}")
+        pdf.setFillColor(MUTED)
         pdf.drawRightString(495, y, f"{invoice.discount_amount:.2f}")
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
         pdf.drawRightString(width - 38, y, f"{invoice.total:.2f}")
         total += invoice.total
-        y -= 16
+        y -= 20
     if rows:
-        y -= 4
-        pdf.line(390, y, width - 38, y)
-        y -= 15
-        pdf.setFont("Helvetica-Bold", 8)
-        pdf.drawRightString(width - 38, y, f"Report total: {total:.2f} {business.currency}")
+        if y < 75:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            _, _, y = _pdf_header(
+                pdf,
+                business,
+                "Invoice register",
+                date_range=date_range,
+                page_number=page_number,
+            )
+        y = draw_report_total(
+            pdf,
+            y - 3,
+            "Net invoice value",
+            total,
+            width=width,
+            currency=business.currency,
+        )
+    draw_page_footer(pdf, width=width, page_number=page_number)
     pdf.save()
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = 'attachment; filename="invoice-register.pdf"'
@@ -383,7 +485,7 @@ def money_receipt_report(request):
     if business is None:
         return render(request, "core/no-business.html")
     receipts, filters = _receipt_filters(request, business)
-    total = receipts.aggregate(total=Sum("total"))["total"] or 0
+    total = receipts.aggregate(total=Sum("amount"))["total"] or 0
     page = Paginator(receipts, 40).get_page(request.GET.get("page"))
     return render(request, "reports/money-receipt-report.html", {
         "business": business,
@@ -405,17 +507,19 @@ def money_receipt_report_csv(request):
     response["Content-Disposition"] = 'attachment; filename="money-receipt-register.csv"'
     writer = csv.writer(response)
     _write_csv_heading(writer, business, "Money receipt register", date_range=date_range)
-    writer.writerow(["Receipt number", "Date", "Received from", "Journal reference", f"Amount ({business.currency})", "Notes"])
+    writer.writerow(["Receipt number", "Date", "Received from", "Payment account", "Source", "Journal reference", f"Amount ({business.currency})", "Notes"])
     wrote_row = False
     for receipt in receipts:
         wrote_row = True
         writer.writerow([
             receipt.number,
-            receipt.voucher_date,
+            receipt.receipt_date,
             receipt.party.name if receipt.party else "",
-            receipt.journal_entry.reference,
-            receipt.total,
-            receipt.notes,
+            str(receipt.payment_account) if receipt.payment_account else "",
+            "Immediate sale" if receipt.voucher.voucher_type == Voucher.Type.SALE else "Receipt voucher",
+            receipt.voucher.journal_entry.reference,
+            receipt.amount,
+            receipt.voucher.notes,
         ])
     if not wrote_row:
         writer.writerow(["No records for the selected filters."])
@@ -433,46 +537,100 @@ def money_receipt_report_pdf(request):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
     pdf.setTitle(f"{business.name} money receipt register")
+    pdf.setAuthor("Prime Ledger")
+    page_number = 1
     width, height, y = _pdf_header(
-        pdf, business, "Money receipt register", date_range=date_range
+        pdf,
+        business,
+        "Money receipt register",
+        date_range=date_range,
+        page_number=page_number,
     )
 
     def columns(current_y):
-        pdf.setFont("Helvetica-Bold", 8)
-        pdf.drawString(38, current_y, "Receipt")
-        pdf.drawString(135, current_y, "Date")
-        pdf.drawString(215, current_y, "Received from")
-        pdf.drawString(390, current_y, "Journal")
-        pdf.drawRightString(width - 38, current_y, f"Amount ({business.currency})")
-        pdf.line(38, current_y - 5, width - 38, current_y - 5)
-        return current_y - 17
+        return draw_table_header(
+            pdf,
+            current_y,
+            (
+                (PAGE_MARGIN, "Receipt", "left"),
+                (137, "Date", "left"),
+                (218, "Received from", "left"),
+                (390, "Source / journal", "left"),
+                (width - PAGE_MARGIN, f"Amount ({business.currency})", "right"),
+            ),
+            width=width,
+        )
 
     y = columns(y)
-    pdf.setFont("Helvetica", 8)
     if not rows:
-        pdf.drawString(38, y, "No records for the selected filters.")
+        y = draw_empty_state(
+            pdf,
+            y,
+            "No money receipts match the selected filters",
+            width=width,
+        )
     total = 0
-    for receipt in rows:
-        if y < 55:
+    for row_index, receipt in enumerate(rows):
+        if y < 72:
+            draw_page_footer(pdf, width=width, page_number=page_number)
             pdf.showPage()
+            page_number += 1
             _, _, y = _pdf_header(
-                pdf, business, "Money receipt register", date_range=date_range
+                pdf,
+                business,
+                "Money receipt register",
+                date_range=date_range,
+                page_number=page_number,
             )
             y = columns(y)
-            pdf.setFont("Helvetica", 8)
-        pdf.drawString(38, y, receipt.number[:18])
-        pdf.drawString(135, y, receipt.voucher_date.strftime("%d-%b-%Y"))
-        pdf.drawString(215, y, (receipt.party.name if receipt.party else "-")[:28])
-        pdf.drawString(390, y, receipt.journal_entry.reference[:22])
-        pdf.drawRightString(width - 38, y, f"{receipt.total:.2f}")
-        total += receipt.total
-        y -= 16
+        draw_table_row_background(pdf, y, width=width, row_index=row_index)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.drawString(PAGE_MARGIN, y, receipt.number[:18])
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7.5)
+        pdf.drawString(137, y, receipt.receipt_date.strftime("%d %b %Y"))
+        pdf.drawString(
+            218,
+            y,
+            clean_text(receipt.party.name if receipt.party else "Not specified", 27),
+        )
+        source = (
+            "Immediate sale"
+            if receipt.voucher.voucher_type == Voucher.Type.SALE
+            else "Receipt voucher"
+        )
+        pdf.drawString(
+            390,
+            y,
+            clean_text(f"{source} / {receipt.voucher.journal_entry.reference}", 29),
+        )
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.drawRightString(width - 38, y, f"{receipt.amount:.2f}")
+        total += receipt.amount
+        y -= 20
     if rows:
-        y -= 4
-        pdf.line(390, y, width - 38, y)
-        y -= 15
-        pdf.setFont("Helvetica-Bold", 8)
-        pdf.drawRightString(width - 38, y, f"Report total: {total:.2f} {business.currency}")
+        if y < 75:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            _, _, y = _pdf_header(
+                pdf,
+                business,
+                "Money receipt register",
+                date_range=date_range,
+                page_number=page_number,
+            )
+        y = draw_report_total(
+            pdf,
+            y - 3,
+            "Amount received",
+            total,
+            width=width,
+            currency=business.currency,
+        )
+    draw_page_footer(pdf, width=width, page_number=page_number)
     pdf.save()
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = 'attachment; filename="money-receipt-register.pdf"'
@@ -485,53 +643,110 @@ def money_receipt_document_pdf(request, pk):
     if business is None:
         return render(request, "core/no-business.html")
     receipt = get_object_or_404(
-        Voucher.objects.select_related("party", "journal_entry"),
+        MoneyReceipt.objects.select_related(
+            "party", "payment_account", "voucher__journal_entry"
+        ),
         pk=pk,
         business=business,
-        voucher_type=Voucher.Type.RECEIPT,
     )
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
     width, height = A4
     pdf.setTitle(f"Money receipt {receipt.number}")
-    y = height - 58
-    pdf.setFont("Helvetica-Bold", 17)
-    pdf.drawString(46, y, business.name[:65])
-    if business.address:
-        y -= 15
+    pdf.setAuthor("Prime Ledger")
+    width, height, y = draw_document_header(
+        pdf,
+        business,
+        "Money receipt",
+        receipt.number,
+        receipt.receipt_date,
+        status="Posted",
+    )
+
+    pdf.setFillColor(SURFACE_SUBTLE)
+    pdf.setStrokeColor(BORDER)
+    pdf.roundRect(PAGE_MARGIN, y - 58, width - (2 * PAGE_MARGIN), 66, 5, stroke=1, fill=1)
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawString(PAGE_MARGIN + 14, y - 13, "RECEIVED FROM")
+    pdf.setFillColor(INK)
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(
+        PAGE_MARGIN + 14,
+        y - 34,
+        clean_text(receipt.party.name if receipt.party else "Not specified", 62),
+    )
+    if receipt.party and receipt.party.address:
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica", 7.5)
+        pdf.drawString(PAGE_MARGIN + 14, y - 48, clean_text(receipt.party.address, 78))
+    y -= 82
+
+    pdf.setFillColor(TEAL_SOFT)
+    pdf.roundRect(PAGE_MARGIN, y - 58, width - (2 * PAGE_MARGIN), 64, 5, stroke=0, fill=1)
+    pdf.setFillColor(TEAL)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawString(PAGE_MARGIN + 14, y - 14, "AMOUNT RECEIVED")
+    pdf.setFillColor(INK)
+    pdf.setFont("Helvetica-Bold", 22)
+    pdf.drawString(PAGE_MARGIN + 14, y - 42, f"{business.currency} {receipt.amount:,.2f}")
+    pdf.setFillColor(TEAL)
+    pdf.setFont("Helvetica-Bold", 7.5)
+    pdf.drawRightString(width - PAGE_MARGIN - 14, y - 34, "RECEIVED")
+    y -= 86
+
+    detail_rows = [
+        ("Payment account", str(receipt.payment_account) if receipt.payment_account else "Not mapped"),
+        ("Accounting reference", receipt.voucher.journal_entry.reference),
+        (
+            "Receipt source",
+            "Immediate paid sale"
+            if receipt.voucher.voucher_type == Voucher.Type.SALE
+            else "Posted receipt voucher",
+        ),
+    ]
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica-Bold", 7)
+    pdf.drawString(PAGE_MARGIN, y, "RECEIPT DETAILS")
+    y -= 15
+    for label, value in detail_rows:
+        pdf.setStrokeColor(BORDER)
+        pdf.line(PAGE_MARGIN, y - 7, width - PAGE_MARGIN, y - 7)
+        pdf.setFillColor(MUTED)
         pdf.setFont("Helvetica", 8)
-        pdf.drawString(46, y, business.address.replace("\n", " ")[:90])
-    y -= 34
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawCentredString(width / 2, y, "MONEY RECEIPT")
-    y -= 26
-    pdf.setFont("Helvetica", 9)
-    pdf.drawString(46, y, f"Receipt number: {receipt.number}")
-    pdf.drawRightString(width - 46, y, f"Date: {receipt.voucher_date:%d-%b-%Y}")
-    y -= 30
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(46, y, "Received from")
-    pdf.setFont("Helvetica-Bold", 10)
-    pdf.drawString(135, y, (receipt.party.name if receipt.party else "Not specified")[:60])
-    y -= 28
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(46, y, "Amount received")
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(135, y - 2, f"{business.currency} {receipt.total:.2f}")
-    y -= 30
-    pdf.setFont("Helvetica", 9)
-    pdf.drawString(46, y, f"Accounting reference: {receipt.journal_entry.reference}")
-    if receipt.notes:
-        y -= 24
-        pdf.drawString(46, y, f"Notes: {receipt.notes.replace(chr(10), ' ')[:90]}")
-    y -= 70
-    pdf.line(46, y, 190, y)
-    pdf.line(width - 190, y, width - 46, y)
-    pdf.setFont("Helvetica", 8)
-    pdf.drawString(46, y - 13, "Received by")
-    pdf.drawString(width - 190, y - 13, "Authorised signature")
-    pdf.setFont("Helvetica-Oblique", 7)
-    pdf.drawCentredString(width / 2, 35, "Generated by Prime Ledger from an immutable posted voucher")
+        pdf.drawString(PAGE_MARGIN, y, label)
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 8)
+        pdf.drawRightString(width - PAGE_MARGIN, y, clean_text(value, 60))
+        y -= 25
+
+    if receipt.voucher.notes:
+        y -= 10
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica-Bold", 7)
+        pdf.drawString(PAGE_MARGIN, y, "NOTES")
+        y -= 23
+        pdf.setFillColor(SURFACE_SUBTLE)
+        pdf.roundRect(PAGE_MARGIN, y - 23, width - (2 * PAGE_MARGIN), 40, 4, stroke=0, fill=1)
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 8)
+        pdf.drawString(PAGE_MARGIN + 12, y - 5, clean_text(receipt.voucher.notes, 100))
+        y -= 48
+
+    signature_y = min(y - 72, 155)
+    pdf.setStrokeColor(BORDER_STRONG)
+    pdf.line(PAGE_MARGIN, signature_y, 195, signature_y)
+    pdf.line(width - 195, signature_y, width - PAGE_MARGIN, signature_y)
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica", 7.5)
+    pdf.drawString(PAGE_MARGIN, signature_y - 13, "Received by")
+    pdf.drawString(width - 195, signature_y - 13, "Authorised signature")
+    draw_page_footer(
+        pdf,
+        width=width,
+        page_number=1,
+        note="Generated from an immutable posted voucher / No manual alteration permitted",
+    )
     pdf.save()
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="money-receipt-{receipt.number}.pdf"'

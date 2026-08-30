@@ -427,6 +427,74 @@ class BusinessReportTests(TestCase):
         )
         self.assertEqual(invalid_csv.status_code, 400)
 
+    def test_transaction_register_covers_posted_activity_and_is_tenant_scoped(self):
+        draft = JournalEntry.objects.create(
+            business=self.business,
+            period=self.period,
+            reference="DRAFT:EXCLUDED",
+            description="Unposted transaction",
+            entry_date=date(2026, 8, 15),
+            created_by=self.owner,
+        )
+        response = self.client.get(
+            reverse("transaction-register"),
+            {"date_from": "2026-08-15", "date_to": "2026-08-15"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Transaction register")
+        self.assertContains(response, "ACTIVITY:REPORT")
+        self.assertContains(response, "Selected range activity")
+        self.assertContains(response, "325.00")
+        self.assertNotContains(response, draft.reference)
+        self.assertNotContains(response, "ACTIVITY:HIDDEN")
+        self.assertNotContains(response, "999.00")
+
+        receipt = self.client.get(
+            reverse("transaction-register"), {"type": "receipt"}
+        )
+        self.assertContains(receipt, "MR-1")
+        self.assertContains(receipt, "200.00")
+        self.assertNotContains(receipt, "S-NOT-RECEIPT")
+        searched = self.client.get(
+            reverse("transaction-register"), {"q": "MR-1"}
+        )
+        self.assertContains(searched, "MR-1")
+        self.assertNotContains(searched, "ACTIVITY:REPORT")
+
+        csv_response = self.client.get(
+            reverse("transaction-register-csv"),
+            {"date_from": "2026-08-15", "date_to": "2026-08-15"},
+        )
+        self.assertEqual(csv_response.status_code, 200)
+        csv_text = csv_response.content.decode()
+        self.assertIn("Transaction type,Document number,Journal reference", csv_text)
+        self.assertIn("ACTIVITY:REPORT", csv_text)
+        self.assertNotIn("ACTIVITY:HIDDEN", csv_text)
+        pdf_response = self.client.get(
+            reverse("transaction-register-pdf"),
+            {"date_from": "2026-08-15", "date_to": "2026-08-15"},
+        )
+        self.assertEqual(pdf_response.status_code, 200)
+        self.assertTrue(pdf_response.content.startswith(b"%PDF"))
+        invalid = self.client.get(
+            reverse("transaction-register-csv"),
+            {"date_from": "2026-09-01", "date_to": "2026-08-01"},
+        )
+        self.assertEqual(invalid.status_code, 400)
+
+    def test_report_index_uses_requested_sequence(self):
+        response = self.client.get(reverse("report-index"))
+        content = response.content.decode()
+        names = [
+            "Contact directory",
+            "Invoice register",
+            "Money receipt register",
+            "Transaction register",
+            "Account activity summary",
+        ]
+        positions = [content.index(name) for name in names]
+        self.assertEqual(positions, sorted(positions))
+
     def test_report_permissions_are_enforced_per_domain(self):
         self.client.logout()
         self.client.login(username="contact-viewer", password="password")
@@ -439,3 +507,4 @@ class BusinessReportTests(TestCase):
         self.assertEqual(self.client.get(reverse("invoice-report")).status_code, 403)
         self.assertEqual(self.client.get(reverse("money-receipt-report")).status_code, 403)
         self.assertEqual(self.client.get(reverse("account-activity-report")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("transaction-register")).status_code, 403)

@@ -21,3 +21,15 @@ class ExpenseRepository(Protocol):
 
 class ExpensePaymentRepository(Protocol):
     def pay(self, **kwargs): ...
+
+
+class TransactionRegisterReader(Protocol):
+    def read(
+        self,
+        *,
+        business_id: int,
+        date_from=None,
+        date_to=None,
+        query: str = "",
+        transaction_type: str = "",
+    ): ...

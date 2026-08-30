@@ -14,9 +14,12 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
 
 from accounting.application.reporting import (
+    TransactionRegisterTotals,
     build_account_activity,
+    build_transaction_register,
     calculate_contact_closing_balance,
 )
+from accounting.infrastructure.reporting import DjangoTransactionRegisterReader
 from accounting.models import Account, JournalLine, MoneyReceipt, Voucher
 from core.application.services import ACCOUNTING_VIEW, CONTACTS_VIEW, SALES_VIEW
 from core.models import Party
@@ -41,6 +44,19 @@ from core.pdf import (
 )
 from core.views import authorize, is_authorized, request_business
 from operations.models import SalePayment, SaleSetoffAllocation, TradeDocument
+
+
+TRANSACTION_TYPE_OPTIONS = (
+    ("", "All transaction types"),
+    (Voucher.Type.SALE, "Sale"),
+    (Voucher.Type.PURCHASE, "Purchase"),
+    (Voucher.Type.RECEIPT, "Receipt"),
+    (Voucher.Type.PAYMENT, "Payment"),
+    (Voucher.Type.CONTRA, "Contra"),
+    (Voucher.Type.EXPENSE, "Expense"),
+    (Voucher.Type.RETURN, "Return"),
+    ("journal", "Journal entry"),
+)
 
 
 def _report_business(request, permission):
@@ -284,6 +300,204 @@ def report_index(request):
     ):
         raise PermissionDenied
     return render(request, "reports/index.html", {"business": business})
+
+
+def _transaction_register_data(request, business):
+    query = request.GET.get("q", "").strip()
+    transaction_type = request.GET.get("type", "").strip()
+    valid_types = {value for value, _ in TRANSACTION_TYPE_OPTIONS}
+    if transaction_type not in valid_types:
+        transaction_type = ""
+    date_from, date_to = _date_filters(request)
+    if date_from and date_to and date_from > date_to:
+        return (
+            [], TransactionRegisterTotals(), query, transaction_type,
+            date_from, date_to, "From date cannot be after to date.",
+        )
+    rows, totals = build_transaction_register(
+        DjangoTransactionRegisterReader(),
+        business_id=business.pk,
+        date_from=date_from,
+        date_to=date_to,
+        query=query,
+        transaction_type=transaction_type,
+    )
+    return rows, totals, query, transaction_type, date_from, date_to, ""
+
+
+@login_required
+def transaction_register(request):
+    business = _report_business(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    (
+        rows, totals, query, transaction_type, date_from, date_to, date_error,
+    ) = _transaction_register_data(request, business)
+    page = Paginator(rows, 50).get_page(request.GET.get("page"))
+    return render(request, "reports/transaction-register.html", {
+        "business": business,
+        "rows": page,
+        "page_obj": page,
+        "totals": totals,
+        "query": query,
+        "transaction_type": transaction_type,
+        "transaction_types": TRANSACTION_TYPE_OPTIONS,
+        "date_from": date_from,
+        "date_to": date_to,
+        "date_error": date_error,
+        "date_range": _date_range_label(date_from, date_to),
+    })
+
+
+@login_required
+def transaction_register_csv(request):
+    business = _report_business(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    (
+        rows, totals, query, transaction_type, date_from, date_to, date_error,
+    ) = _transaction_register_data(request, business)
+    if date_error:
+        return HttpResponse(date_error, status=400, content_type="text/plain")
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="transaction-register.csv"'
+    writer = csv.writer(response)
+    _write_csv_heading(
+        writer,
+        business,
+        "Transaction register",
+        date_range=_date_range_label(date_from, date_to),
+    )
+    writer.writerow([
+        "Date", "Transaction type", "Document number", "Journal reference",
+        "Party", "Description", f"Value ({business.currency})",
+        f"Total debit ({business.currency})", f"Total credit ({business.currency})",
+    ])
+    for row in rows:
+        writer.writerow([
+            row.transaction_date,
+            row.transaction_type,
+            row.number,
+            row.journal_reference,
+            row.party_name if row.party_name != "—" else "",
+            row.description,
+            f"{row.amount:.2f}",
+            f"{row.debit:.2f}",
+            f"{row.credit:.2f}",
+        ])
+    if not rows:
+        writer.writerow(["No posted transactions match the selected filters."])
+    writer.writerow([])
+    writer.writerow([
+        "TOTAL", "", "", "", "", "",
+        f"{totals.amount:.2f}", f"{totals.debit:.2f}", f"{totals.credit:.2f}",
+    ])
+    return response
+
+
+@login_required
+def transaction_register_pdf(request):
+    business = _report_business(request, ACCOUNTING_VIEW)
+    if business is None:
+        return render(request, "core/no-business.html")
+    (
+        rows, totals, query, transaction_type, date_from, date_to, date_error,
+    ) = _transaction_register_data(request, business)
+    if date_error:
+        return HttpResponse(date_error, status=400, content_type="text/plain")
+    date_range = _date_range_label(date_from, date_to)
+    page_size = landscape(A4)
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=page_size, pageCompression=1)
+    pdf.setTitle(f"{business.name} transaction register")
+    pdf.setAuthor("Prime Ledger")
+    page_number = 1
+    width, _, y = _pdf_header(
+        pdf, business, "Transaction register", date_range=date_range,
+        page_size=page_size, page_number=page_number,
+    )
+
+    def columns(current_y):
+        return draw_table_header(
+            pdf,
+            current_y,
+            (
+                (PAGE_MARGIN, "Date", "left"),
+                (105, "Type", "left"),
+                (175, "Document / journal", "left"),
+                (350, "Party / description", "left"),
+                (635, "Value", "right"),
+                (720, "Debit", "right"),
+                (800, "Credit", "right"),
+            ),
+            width=width,
+        )
+
+    y = columns(y)
+    if not rows:
+        y = draw_empty_state(
+            pdf, y, "No posted transactions match the selected filters", width=width
+        )
+    for row_index, row in enumerate(rows):
+        if y < 68:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            _, _, y = _pdf_header(
+                pdf, business, "Transaction register", date_range=date_range,
+                page_size=page_size, page_number=page_number,
+            )
+            y = columns(y)
+        draw_table_row_background(
+            pdf, y, width=width, row_index=row_index, height=25
+        )
+        pdf.setFillColor(INK_SOFT)
+        pdf.setFont("Helvetica", 7.2)
+        pdf.drawString(PAGE_MARGIN, y + 2, row.transaction_date.strftime("%d %b %Y"))
+        pdf.setFillColor(TEAL)
+        pdf.setFont("Helvetica-Bold", 7)
+        pdf.drawString(105, y + 2, clean_text(row.transaction_type, 13))
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.2)
+        pdf.drawString(175, y + 4, clean_text(row.number, 26))
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica", 6.5)
+        pdf.drawString(175, y - 6, clean_text(row.journal_reference, 30))
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.1)
+        pdf.drawString(350, y + 4, clean_text(row.party_name, 37))
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica", 6.5)
+        pdf.drawString(350, y - 6, clean_text(row.description, 50))
+        pdf.setFillColor(INK)
+        pdf.setFont("Helvetica-Bold", 7.3)
+        pdf.drawRightString(635, y + 1, f"{row.amount:.2f}")
+        pdf.drawRightString(720, y + 1, f"{row.debit:.2f}")
+        pdf.drawRightString(800, y + 1, f"{row.credit:.2f}")
+        y -= 25
+    if rows:
+        if y < 74:
+            draw_page_footer(pdf, width=width, page_number=page_number)
+            pdf.showPage()
+            page_number += 1
+            _, _, y = _pdf_header(
+                pdf, business, "Transaction register", date_range=date_range,
+                page_size=page_size, page_number=page_number,
+            )
+            y = columns(y)
+        pdf.setFillColor(TEAL_SOFT)
+        pdf.rect(PAGE_MARGIN, y - 8, width - (2 * PAGE_MARGIN), 25, stroke=0, fill=1)
+        pdf.setFillColor(TEAL)
+        pdf.setFont("Helvetica-Bold", 7.3)
+        pdf.drawString(PAGE_MARGIN, y, f"TOTAL · {totals.transaction_count} TRANSACTIONS")
+        pdf.drawRightString(635, y, f"{totals.amount:.2f}")
+        pdf.drawRightString(720, y, f"{totals.debit:.2f}")
+        pdf.drawRightString(800, y, f"{totals.credit:.2f}")
+    draw_page_footer(pdf, width=width, page_number=page_number)
+    pdf.save()
+    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="transaction-register.pdf"'
+    return response
 
 
 @login_required

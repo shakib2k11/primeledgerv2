@@ -1,24 +1,24 @@
-{% extends "base.html" %}
-{% block title %}{{ document.number }} | Prime Ledger{% endblock %}
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{{ document.number }} {% translate "| Prime Ledger" %}{% endblock %}
 {% block content %}
 <header class="page-heading detail-heading">
   <div>
     <div class="breadcrumb">
-      <a href="{% if kind == 'sale' %}{% url 'sale-list' %}{% else %}{% url 'purchase-list' %}{% endif %}">{{ document.get_kind_display }}s</a>
+      <a href="{% if kind == 'sale' %}{% url 'sale-list' %}{% else %}{% url 'purchase-list' %}{% endif %}">{{ document.get_kind_display }}{% translate "s" %}</a>
       <span>/</span><span>{{ document.number }}</span>
     </div>
     <h1>{{ document.number }}</h1>
     <p class="lede">{{ document.party.name }} · {{ document.document_date|date:"d M Y" }}</p>
   </div>
   <div class="heading-actions">
-    <a class="button secondary" href="{% if kind == 'sale' %}{% url 'sale-document-pdf' document.pk %}{% else %}{% url 'purchase-document-pdf' document.pk %}{% endif %}">{% if kind == 'sale' %}Download invoice{% else %}Download PDF{% endif %}</a>
+    <a class="button secondary" href="{% if kind == 'sale' %}{% url 'sale-document-pdf' document.pk %}{% else %}{% url 'purchase-document-pdf' document.pk %}{% endif %}">{% if kind == 'sale' %}{% translate "Download invoice" %}{% else %}{% translate "Download PDF" %}{% endif %}</a>
     {% if document.status == 'draft' and not document.period.is_locked %}
       {% if kind == 'sale' and can_manage_sales %}
-        <a class="button secondary" href="{% url 'sale-edit' document.pk %}">Edit draft</a>
-        <a class="button danger" href="{% url 'sale-delete' document.pk %}">Delete draft</a>
+        <a class="button secondary" href="{% url 'sale-edit' document.pk %}">{% translate "Edit draft" %}</a>
+        <a class="button danger" href="{% url 'sale-delete' document.pk %}">{% translate "Delete draft" %}</a>
       {% elif kind == 'purchase' and can_manage_purchases %}
-        <a class="button secondary" href="{% url 'purchase-edit' document.pk %}">Edit draft</a>
-        <a class="button danger" href="{% url 'purchase-delete' document.pk %}">Delete draft</a>
+        <a class="button secondary" href="{% url 'purchase-edit' document.pk %}">{% translate "Edit draft" %}</a>
+        <a class="button danger" href="{% url 'purchase-delete' document.pk %}">{% translate "Delete draft" %}</a>
       {% endif %}
     {% endif %}
     <span class="status-badge large {% if document.status == 'posted' %}positive{% else %}attention{% endif %}">{{ document.get_status_display }}</span>
@@ -28,18 +28,25 @@
 <section class="detail-grid">
   <article class="panel">
     <div class="detail-meta">
-      <div><span>Party</span><strong>{{ document.party.name }}</strong></div>
-      <div><span>Fiscal period</span><strong>{{ document.period.name }}</strong></div>
-      <div><span>Debit account</span><strong>{{ document.debit_account.code }} · {{ document.debit_account.name }}</strong></div>
-      <div><span>Credit account</span><strong>{{ document.credit_account.code }} · {{ document.credit_account.name }}</strong></div>
+      <div><span>{% translate "Party" %}</span><strong>{{ document.party.name }}</strong></div>
+      <div><span>{% translate "Fiscal period" %}</span><strong>{{ document.period.name }}</strong></div>
+      <div><span>{% if kind == 'sale' %}{% translate "Customer payment" %}{% else %}{% translate "Supplier payment" %}{% endif %}</span><strong>{{ settlement_summary }}</strong></div>
+      <div><span>{% translate "Accounting" %}</span><strong>{% translate "Generated automatically" %}</strong></div>
     </div>
+    <details class="accounting-details">
+      <summary>{% translate "View accounting entries" %}</summary>
+      <div class="detail-meta compact">
+        <div><span>{% translate "Debit account" %}</span><strong>{{ document.debit_account.code }} · {{ document.debit_account.name }}</strong></div>
+        <div><span>{% translate "Credit account" %}</span><strong>{{ document.credit_account.code }} · {{ document.credit_account.name }}</strong></div>
+      </div>
+    </details>
     <div class="table-wrap journal-lines">
       <table>
-        <thead><tr><th>Item</th><th>Description</th><th class="numeric">Quantity</th><th class="numeric">Unit price</th><th class="numeric">Line total</th></tr></thead>
+        <thead><tr><th>{% translate "Item" %}</th><th>{% translate "Description" %}</th><th class="numeric">{% translate "Quantity" %}</th><th class="numeric">{% translate "Unit price" %}</th><th class="numeric">{% translate "Line total" %}</th></tr></thead>
         <tbody>
           {% for line in document.lines.all %}
           <tr>
-            <td><strong>{{ line.product.name }}</strong><small>{% if line.product.is_service %}Service{% else %}{{ line.product.unit }}{% endif %}</small></td>
+            <td><strong>{{ line.product.name }}</strong><small>{% if line.product.is_service %}{% translate "Service" %}{% else %}{{ line.product.unit }}{% endif %}</small></td>
             <td>{{ line.description }}</td>
             <td class="numeric">{{ line.quantity|floatformat:3 }}</td>
             <td class="numeric money">{{ line.unit_price|floatformat:2 }}</td>
@@ -49,63 +56,63 @@
         </tbody>
         <tfoot>
           {% if document.discount_amount %}
-          <tr><th colspan="4">Subtotal ({{ business.currency }})</th><th class="numeric money">{{ document.subtotal|floatformat:2 }}</th></tr>
-          <tr><th colspan="4">Discount{% if document.discount_type == 'percentage' %} ({{ document.discount_value|floatformat:2 }}%){% endif %}</th><th class="numeric money">−{{ document.discount_amount|floatformat:2 }}</th></tr>
+          <tr><th colspan="4">{% translate "Subtotal (" %}{{ business.currency }})</th><th class="numeric money">{{ document.subtotal|floatformat:2 }}</th></tr>
+          <tr><th colspan="4">{% translate "Discount" %}{% if document.discount_type == 'percentage' %} ({{ document.discount_value|floatformat:2 }}%){% endif %}</th><th class="numeric money">−{{ document.discount_amount|floatformat:2 }}</th></tr>
           {% endif %}
-          <tr><th colspan="4">Total ({{ business.currency }})</th><th class="numeric money">{{ document.total|floatformat:2 }}</th></tr>
+          <tr><th colspan="4">{% translate "Total (" %}{{ business.currency }})</th><th class="numeric money">{{ document.total|floatformat:2 }}</th></tr>
         </tfoot>
       </table>
     </div>
   </article>
   <aside class="panel posting-panel">
-    <span class="overline">Posting control</span>
+    <span class="overline">{% translate "Posting control" %}</span>
     {% if document.status == 'posted' %}
-      <h2>Posted transaction</h2>
-      <p>The journal, voucher, and stock movements were created atomically.</p>
+      <h2>{% translate "Posted transaction" %}</h2>
+      <p>{% translate "The journal, voucher, and stock movements were created atomically." %}</p>
       {% if kind == 'sale' or kind == 'purchase' %}
       <div class="sale-payment-state">
-        <span>Payment status</span>
+        <span>{% translate "Payment status" %}</span>
         <strong class="status-text {% if payment_status == 'paid' %}positive{% elif payment_status == 'partial' %}attention{% else %}muted{% endif %}">{{ document.get_payment_status_display|default:payment_status }}</strong>
-        <dl><div><dt>Paid</dt><dd>{{ paid_amount|floatformat:2 }}</dd></div><div><dt>Balance</dt><dd>{{ balance_due|floatformat:2 }}</dd></div></dl>
+        <dl><div><dt>{% translate "Paid" %}</dt><dd>{{ paid_amount|floatformat:2 }}</dd></div><div><dt>{% translate "Balance" %}</dt><dd>{{ balance_due|floatformat:2 }}</dd></div></dl>
       </div>
-      {% if document.can_receive_payment and can_post_sales %}<a class="button primary wide" href="{% url 'sale-receive-payment' document.pk %}">Receive payment</a>{% endif %}
-      {% if document.can_pay_supplier and can_post_purchases %}<a class="button primary wide" href="{% url 'purchase-pay-supplier' document.pk %}">Pay supplier</a>{% endif %}
+      {% if document.can_receive_payment and can_post_sales %}<a class="button primary wide" href="{% url 'sale-receive-payment' document.pk %}">{% translate "Receive payment" %}</a>{% endif %}
+      {% if document.can_pay_supplier and can_post_purchases %}<a class="button primary wide" href="{% url 'purchase-pay-supplier' document.pk %}">{% translate "Pay supplier" %}</a>{% endif %}
       {% endif %}
-      {% if money_receipt %}<a class="button primary wide" href="{% url 'money-receipt-document-pdf' money_receipt.pk %}">Download money receipt</a>{% endif %}
-      {% if document.journal_entry %}<a class="button secondary wide" href="{% url 'journal-detail' document.journal_entry.pk %}">View journal entry</a>{% endif %}
-      <div class="assurance"><span>✓</span> Financial and stock history locked</div>
+      {% if money_receipt %}<a class="button primary wide" href="{% url 'money-receipt-document-pdf' money_receipt.pk %}">{% translate "Download money receipt" %}</a>{% endif %}
+      {% if document.journal_entry %}<a class="button secondary wide" href="{% url 'journal-detail' document.journal_entry.pk %}">{% translate "View journal entry" %}</a>{% endif %}
+      <div class="assurance"><span>✓</span> {% translate "Financial and stock history locked" %}</div>
     {% else %}
-      <h2>Ready for review</h2>
-      <p>Posting is permanent. Sales require sufficient stock; services do not create stock movement.</p>
+      <h2>{% translate "Ready for review" %}</h2>
+      <p>{% translate "Posting is permanent. Sales require sufficient stock; services do not create stock movement." %}</p>
       <dl>
         {% if document.discount_amount %}
-        <div><dt>Subtotal</dt><dd>{{ document.subtotal|floatformat:2 }}</dd></div>
-        <div><dt>Discount</dt><dd>−{{ document.discount_amount|floatformat:2 }}</dd></div>
+        <div><dt>{% translate "Subtotal" %}</dt><dd>{{ document.subtotal|floatformat:2 }}</dd></div>
+        <div><dt>{% translate "Discount" %}</dt><dd>−{{ document.discount_amount|floatformat:2 }}</dd></div>
         {% endif %}
-        <div><dt>Document total</dt><dd>{{ document.total|floatformat:2 }}</dd></div>
-        <div><dt>Line count</dt><dd>{{ document.lines.count }}</dd></div>
+        <div><dt>{% translate "Document total" %}</dt><dd>{{ document.total|floatformat:2 }}</dd></div>
+        <div><dt>{% translate "Line count" %}</dt><dd>{{ document.lines.count }}</dd></div>
       </dl>
-      {% if kind == 'sale' and can_post_sales %}<a class="button primary wide" href="{% url 'sale-post' document.pk %}">Review &amp; post sale</a>{% elif kind == 'purchase' and can_post_purchases %}<a class="button primary wide" href="{% url 'purchase-post' document.pk %}">Review &amp; post purchase</a>{% endif %}
+      {% if kind == 'sale' and can_post_sales %}<a class="button primary wide" href="{% url 'sale-post' document.pk %}">{% translate "Review &amp; post sale" %}</a>{% elif kind == 'purchase' and can_post_purchases %}<a class="button primary wide" href="{% url 'purchase-post' document.pk %}">{% translate "Review &amp; post purchase" %}</a>{% endif %}
     {% endif %}
   </aside>
 </section>
 {% if setoff_allocations %}
 <section class="panel data-panel payment-history-panel">
-  <div class="table-panel-heading"><div><span class="overline">Contra settlement</span><h2>Balance set-offs</h2></div></div>
-  <div class="table-wrap"><table><thead><tr><th>Set-off</th><th>Date</th><th>Contact</th><th class="numeric">Allocated</th><th></th></tr></thead><tbody>{% for allocation in setoff_allocations %}<tr><td><strong>{{ allocation.setoff.number }}</strong><small>{{ allocation.setoff.voucher.number }}</small></td><td>{{ allocation.setoff.setoff_date|date:"d M Y" }}</td><td>{{ document.party.name }}</td><td class="numeric money">{{ allocation.amount|floatformat:2 }}</td><td class="action-cell"><a class="text-link" href="{% url 'balance-setoff-detail' allocation.setoff.pk %}">View contra</a></td></tr>{% endfor %}</tbody></table></div>
+  <div class="table-panel-heading"><div><span class="overline">{% translate "Contra settlement" %}</span><h2>{% translate "Balance set-offs" %}</h2></div></div>
+  <div class="table-wrap"><table><thead><tr><th>{% translate "Set-off" %}</th><th>{% translate "Date" %}</th><th>{% translate "Contact" %}</th><th class="numeric">{% translate "Allocated" %}</th><th></th></tr></thead><tbody>{% for allocation in setoff_allocations %}<tr><td><strong>{{ allocation.setoff.number }}</strong><small>{{ allocation.setoff.voucher.number }}</small></td><td>{{ allocation.setoff.setoff_date|date:"d M Y" }}</td><td>{{ document.party.name }}</td><td class="numeric money">{{ allocation.amount|floatformat:2 }}</td><td class="action-cell"><a class="text-link" href="{% url 'balance-setoff-detail' allocation.setoff.pk %}">{% translate "View contra" %}</a></td></tr>{% endfor %}</tbody></table></div>
 </section>
 {% endif %}
 {% if document.status == 'posted' and is_credit_sale or document.status == 'posted' and is_credit_purchase %}
 <section class="panel data-panel payment-history-panel">
-  <div class="table-panel-heading"><span class="overline">{% if kind == 'sale' %}Customer settlement{% else %}Supplier settlement{% endif %}</span><h2>Payment history</h2></div>
+  <div class="table-panel-heading"><span class="overline">{% if kind == 'sale' %}{% translate "Customer settlement" %}{% else %}{% translate "Supplier settlement" %}{% endif %}</span><h2>{% translate "Payment history" %}</h2></div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Payment</th><th>Date</th><th>{% if kind == 'sale' %}Deposit account{% else %}Paid from{% endif %}</th><th class="numeric">Amount</th><th>{% if kind == 'sale' %}Received by{% else %}Paid by{% endif %}</th><th></th></tr></thead>
+      <thead><tr><th>{% translate "Payment" %}</th><th>{% translate "Date" %}</th><th>{% if kind == 'sale' %}{% translate "Deposit account" %}{% else %}{% translate "Paid from" %}{% endif %}</th><th class="numeric">{% translate "Amount" %}</th><th>{% if kind == 'sale' %}{% translate "Received by" %}{% else %}{% translate "Paid by" %}{% endif %}</th><th></th></tr></thead>
       <tbody>
         {% for payment in payments %}
-        <tr><td><strong>{{ payment.number }}</strong><small>{{ payment.journal_entry.reference }}</small></td><td>{{ payment.payment_date|date:"d M Y" }}</td><td>{{ payment.payment_account }}</td><td class="numeric money"><strong>{{ payment.amount|floatformat:2 }} <small class="inline">{{ business.currency }}</small></strong></td><td>{% if kind == 'sale' %}{{ payment.received_by.get_full_name|default:payment.received_by.username|default:"System" }}{% else %}{{ payment.paid_by.get_full_name|default:payment.paid_by.username|default:"System" }}{% endif %}</td><td class="action-cell">{% if kind == 'sale' %}<a class="text-link" href="{% url 'money-receipt-document-pdf' payment.money_receipt.pk %}">Receipt PDF</a>{% else %}<a class="text-link" href="{% url 'purchase-payment-document-pdf' payment.pk %}">Voucher PDF</a>{% endif %}</td></tr>
+        <tr><td><strong>{{ payment.number }}</strong><small>{{ payment.journal_entry.reference }}</small></td><td>{{ payment.payment_date|date:"d M Y" }}</td><td>{{ payment.payment_account }}</td><td class="numeric money"><strong>{{ payment.amount|floatformat:2 }} <small class="inline">{{ business.currency }}</small></strong></td><td>{% if kind == 'sale' %}{{ payment.received_by.get_full_name|default:payment.received_by.username|default:"System" }}{% else %}{{ payment.paid_by.get_full_name|default:payment.paid_by.username|default:"System" }}{% endif %}</td><td class="action-cell">{% if kind == 'sale' %}<a class="text-link" href="{% url 'money-receipt-document-pdf' payment.money_receipt.pk %}">{% translate "Receipt PDF" %}</a>{% else %}<a class="text-link" href="{% url 'purchase-payment-document-pdf' payment.pk %}">{% translate "Voucher PDF" %}</a>{% endif %}</td></tr>
         {% empty %}
-        <tr><td colspan="6"><div class="empty-state payment-empty"><strong>No allocated payments yet</strong><p>{% if kind == 'sale' %}Use Receive payment when the customer settles this invoice.{% else %}Use Pay supplier when this payable is settled.{% endif %}</p></div></td></tr>
+        <tr><td colspan="6"><div class="empty-state payment-empty"><strong>{% translate "No allocated payments yet" %}</strong><p>{% if kind == 'sale' %}{% translate "Use Receive payment when the customer settles this invoice." %}{% else %}{% translate "Use Pay supplier when this payable is settled." %}{% endif %}</p></div></td></tr>
         {% endfor %}
       </tbody>
     </table>

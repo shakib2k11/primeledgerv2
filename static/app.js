@@ -1,3 +1,5 @@
+const t = window.gettext || ((value) => value);
+
 const normalizeSearchText = (value) => String(value || "")
   .normalize("NFKD")
   .replace(/[\u0300-\u036f]/g, "")
@@ -25,7 +27,7 @@ const enhanceSelect = (select) => {
   input.setAttribute("role", "combobox");
   input.setAttribute("aria-autocomplete", "list");
   input.setAttribute("aria-expanded", "false");
-  input.setAttribute("aria-label", select.getAttribute("aria-label") || "Search options");
+  input.setAttribute("aria-label", select.getAttribute("aria-label") || t("Search options"));
   const list = document.createElement("div");
   list.className = "select-autocomplete-list";
   list.id = `autocomplete-${select.id || Math.random().toString(36).slice(2)}`;
@@ -104,7 +106,7 @@ const enhanceSelect = (select) => {
       item.id = `${list.id}-option-${index}`;
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", "false");
-      item.textContent = option.textContent.trim() || "Clear selection";
+      item.textContent = option.textContent.trim() || t("Clear selection");
       if (!option.value) item.classList.add("placeholder");
       item.addEventListener("pointerdown", (event) => {
         event.preventDefault();
@@ -116,7 +118,7 @@ const enhanceSelect = (select) => {
     if (!visibleOptions.length) {
       const empty = document.createElement("div");
       empty.className = "select-autocomplete-empty";
-      empty.textContent = "No matching options";
+      empty.textContent = t("No matching options");
       list.append(empty);
     }
     list.hidden = false;
@@ -185,6 +187,35 @@ const enhanceSelects = (root = document) => {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+  const tradeSettlementForm = document.querySelector("[data-trade-settlement-form]");
+  if (tradeSettlementForm) {
+    const method = tradeSettlementForm.querySelector('[name="settlement_method"]');
+    const fundsField = tradeSettlementForm.querySelector("[data-funds-account-field]");
+    const fundsAccount = tradeSettlementForm.querySelector('[name="funds_account"]');
+    const explanation = tradeSettlementForm.querySelector("[data-trade-posting-explanation]");
+    const isSale = window.location.pathname.includes("/sales/");
+    const updateTradeSettlement = () => {
+      const deferred = method.value === "deferred";
+      fundsField.hidden = deferred;
+      fundsAccount.disabled = deferred;
+      [...fundsAccount.options].forEach((option) => {
+        option.hidden = Boolean(option.value) && option.dataset.systemRole !== method.value;
+      });
+      if (!deferred && fundsAccount.selectedOptions[0]?.hidden) fundsAccount.value = "";
+      fundsAccount.dispatchEvent(new Event("change", {bubbles: true}));
+      if (deferred) {
+        explanation.textContent = isSale
+          ? t("Debit Accounts Receivable and credit Sales Revenue.")
+          : t("Debit Inventory and credit Accounts Payable.");
+      } else {
+        explanation.textContent = isSale
+          ? t("Debit the selected payment account and credit Sales Revenue.")
+          : t("Debit Inventory and credit the selected payment account.");
+      }
+    };
+    method.addEventListener("change", updateTradeSettlement);
+    updateTradeSettlement();
+  }
   const expenseForm = document.querySelector("[data-expense-form]");
   if (expenseForm) {
     const settlement = expenseForm.querySelector('[name="settlement"]');
@@ -196,8 +227,8 @@ document.addEventListener("DOMContentLoaded", () => {
       paymentField.hidden = !paidNow;
       paymentAccount.disabled = !paidNow;
       credit.textContent = paidNow
-        ? "Credit the selected Cash, Bank, or Mobile Financial Services account"
-        : "Credit Accounts Payable; allocate cash payments later";
+        ? t("Credit the selected Cash, Bank, or Mobile Financial Services account")
+        : t("Credit Accounts Payable; allocate cash payments later");
     };
     settlement.addEventListener("change", updateExpenseSettlement);
     updateExpenseSettlement();
@@ -223,7 +254,9 @@ document.addEventListener("DOMContentLoaded", () => {
       saleOutput.textContent = sales.toFixed(2);
       purchaseOutput.textContent = purchases.toFixed(2);
       const balanced = sales > 0 && Math.abs(sales - purchases) < 0.005;
-      status.textContent = balanced ? `Ready to set off ${sales.toFixed(2)}` : `Difference: ${Math.abs(sales - purchases).toFixed(2)}`;
+      status.textContent = balanced
+        ? `${t("Ready to set off")} ${sales.toFixed(2)}`
+        : `${t("Difference:")} ${Math.abs(sales - purchases).toFixed(2)}`;
       status.classList.toggle("positive", balanced);
     };
     [...saleInputs, ...purchaseInputs].forEach((input) => input.addEventListener("input", updateSetoff));

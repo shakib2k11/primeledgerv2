@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
+from django.views.i18n import JavaScriptCatalog
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
@@ -9,6 +10,7 @@ from accounting.api import (
 )
 from accounting import views as accounting_views
 from core.api import InventoryUnitViewSet, PartyViewSet, ProductViewSet, StockMovementViewSet
+from core.localization import set_application_language
 from core.views import (
     dashboard,
     health_check,
@@ -47,6 +49,8 @@ router.register("balance-setoffs", BalanceSetoffViewSet, basename="api-balance-s
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("i18n/setlang/", set_application_language, name="set_language"),
+    path("jsi18n/", JavaScriptCatalog.as_view(), name="javascript-catalog"),
     path("login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("", dashboard, name="dashboard"),

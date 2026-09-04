@@ -1,11 +1,11 @@
-{% extends "base.html" %}
-{% block title %}Pay supplier · {{ purchase.number }} | Prime Ledger{% endblock %}
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "Pay supplier ·" %} {{ purchase.number }} {% translate "| Prime Ledger" %}{% endblock %}
 {% block content %}
 <header class="page-heading compact">
   <div>
-    <div class="breadcrumb"><a href="{% url 'payment-center' %}">Payments</a><span>/</span><a href="{% url 'purchase-detail' purchase.pk %}">{{ purchase.number }}</a><span>/</span><span>Pay supplier</span></div>
-    <h1>Pay supplier</h1>
-    <p class="lede">Allocate a payment to {{ purchase.party.name }} against this payable.</p>
+    <div class="breadcrumb"><a href="{% url 'payment-center' %}">{% translate "Payments" %}</a><span>/</span><a href="{% url 'purchase-detail' purchase.pk %}">{{ purchase.number }}</a><span>/</span><span>{% translate "Pay supplier" %}</span></div>
+    <h1>{% translate "Pay supplier" %}</h1>
+    <p class="lede">{% translate "Allocate a payment to" %} {{ purchase.party.name }} {% translate "against this payable." %}</p>
   </div>
 </header>
 
@@ -14,31 +14,31 @@
     {% csrf_token %}
     {{ form.idempotency_key }}
     <div class="panel-heading">
-      <div><span class="overline">Payment details</span><h2>Record funds paid</h2></div>
-      <span class="status-badge attention">Posts immediately</span>
+      <div><span class="overline">{% translate "Payment details" %}</span><h2>{% translate "Record funds paid" %}</h2></div>
+      <span class="status-badge attention">{% translate "Posts immediately" %}</span>
     </div>
     {% if form.non_field_errors %}<div class="alert error">{{ form.non_field_errors }}</div>{% endif %}
     <div class="payment-form-grid">
-      <div class="field"><label for="{{ form.payment_date.id_for_label }}">Payment date</label>{{ form.payment_date }}{{ form.payment_date.errors }}</div>
-      <div class="field"><label for="{{ form.payment_account.id_for_label }}">Paid from account</label>{{ form.payment_account }}<small>{{ form.payment_account.help_text }}</small>{{ form.payment_account.errors }}</div>
-      <div class="field"><label for="{{ form.amount.id_for_label }}">Amount paid ({{ business.currency }})</label>{{ form.amount }}<small>{{ form.amount.help_text }}</small>{{ form.amount.errors }}</div>
-      <div class="field form-wide"><label for="{{ form.notes.id_for_label }}">Reference or note</label>{{ form.notes }}<small>Optional cheque number, bank reference, mobile transaction ID, or payment note.</small>{{ form.notes.errors }}</div>
+      <div class="field"><label for="{{ form.payment_date.id_for_label }}">{% translate "Payment date" %}</label>{{ form.payment_date }}{{ form.payment_date.errors }}</div>
+      <div class="field"><label for="{{ form.payment_account.id_for_label }}">{% translate "Paid from account" %}</label>{{ form.payment_account }}<small>{{ form.payment_account.help_text }}</small>{{ form.payment_account.errors }}</div>
+      <div class="field"><label for="{{ form.amount.id_for_label }}">{% translate "Amount paid (" %}{{ business.currency }})</label>{{ form.amount }}<small>{{ form.amount.help_text }}</small>{{ form.amount.errors }}</div>
+      <div class="field form-wide"><label for="{{ form.notes.id_for_label }}">{% translate "Reference or note" %}</label>{{ form.notes }}<small>{% translate "Optional cheque number, bank reference, mobile transaction ID, or payment note." %}</small>{{ form.notes.errors }}</div>
     </div>
     <label class="payment-confirmation">{{ form.confirm }}<span>{{ form.confirm.label }}</span></label>
     {{ form.confirm.errors }}
-    <div class="payment-form-actions"><a class="button secondary" href="{% url 'purchase-detail' purchase.pk %}">Cancel</a><button class="button primary" type="submit">Pay and post</button></div>
+    <div class="payment-form-actions"><a class="button secondary" href="{% url 'purchase-detail' purchase.pk %}">{% translate "Cancel" %}</a><button class="button primary" type="submit">{% translate "Pay and post" %}</button></div>
   </form>
 
   <aside class="panel payment-allocation-summary">
-    <span class="overline">Purchase allocation</span>
+    <span class="overline">{% translate "Purchase allocation" %}</span>
     <h2>{{ purchase.number }}</h2>
     <p>{{ purchase.party.name }} · {{ purchase.document_date|date:"d M Y" }}</p>
     <dl>
-      <div><dt>Purchase total</dt><dd>{{ purchase.total|floatformat:2 }}</dd></div>
-      <div><dt>Previously paid</dt><dd>{{ paid_amount|floatformat:2 }}</dd></div>
-      <div class="balance"><dt>Payable balance</dt><dd>{{ balance_due|floatformat:2 }} <small>{{ business.currency }}</small></dd></div>
+      <div><dt>{% translate "Purchase total" %}</dt><dd>{{ purchase.total|floatformat:2 }}</dd></div>
+      <div><dt>{% translate "Previously paid" %}</dt><dd>{{ paid_amount|floatformat:2 }}</dd></div>
+      <div class="balance"><dt>{% translate "Payable balance" %}</dt><dd>{{ balance_due|floatformat:2 }} <small>{{ business.currency }}</small></dd></div>
     </dl>
-    <div class="payment-posting-note"><strong>Automatic posting</strong><span>Debit Accounts Payable</span><span>Credit the selected funds account</span><span>Create an immutable payment voucher</span></div>
+    <div class="payment-posting-note"><strong>{% translate "Automatic posting" %}</strong><span>{% translate "Debit Accounts Payable" %}</span><span>{% translate "Credit the selected funds account" %}</span><span>{% translate "Create an immutable payment voucher" %}</span></div>
   </aside>
 </section>
 {% endblock %}

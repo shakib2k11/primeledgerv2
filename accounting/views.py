@@ -10,6 +10,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.formats import date_format
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
@@ -55,7 +56,9 @@ from core.pdf import (
     BORDER, INK, INK_SOFT, MUTED, PAGE_MARGIN, SURFACE_SUBTLE, TEAL,
     clean_text, draw_document_header, draw_empty_state, draw_page_footer,
     draw_report_header, draw_table_header, draw_table_row_background,
+    pdf_font,
 )
+from django.utils.translation import gettext as _
 
 
 def accounting_context(request, permission):
@@ -110,12 +113,12 @@ def account_create(request):
         account.business = business
         account.full_clean()
         account.save()
-        messages.success(request, "Account added to the chart of accounts.")
+        messages.success(request, _("Account added to the chart of accounts."))
         return redirect("account-list")
     return render(request, "core/record-form.html", {
-        "business": business, "form": form, "title": "Add account",
-        "eyebrow": "Chart of accounts", "description": "Use a stable code and the correct accounting classification.",
-        "cancel_url": "account-list", "submit_label": "Save account",
+        "business": business, "form": form, "title": _("Add account"),
+        "eyebrow": _("Chart of accounts"), "description": _("Use a stable code and the correct accounting classification."),
+        "cancel_url": "account-list", "submit_label": _("Save account"),
     })
 
 
@@ -142,7 +145,12 @@ def account_template_apply(request):
         else:
             messages.success(
                 request,
-                f"{template.name} applied: {result.created} created, {result.matched} matched.",
+                _("%(template)s applied: %(created)s created, %(matched)s matched.")
+                % {
+                    "template": template.name,
+                    "created": result.created,
+                    "matched": result.matched,
+                },
             )
             return redirect("account-list")
     return render(request, "accounting/account-template-apply.html", {
@@ -169,12 +177,12 @@ def period_create(request):
     form = FiscalPeriodForm(request.POST or None, instance=period)
     if request.method == "POST" and form.is_valid():
         form.save()
-        messages.success(request, "Fiscal period created successfully.")
+        messages.success(request, _("Fiscal period created successfully."))
         return redirect("period-list")
     return render(request, "core/record-form.html", {
-        "business": business, "form": form, "title": "Create fiscal period",
-        "eyebrow": "Accounting controls", "description": "Periods cannot overlap and locked periods reject new postings.",
-        "cancel_url": "period-list", "submit_label": "Create period",
+        "business": business, "form": form, "title": _("Create fiscal period"),
+        "eyebrow": _("Accounting controls"), "description": _("Periods cannot overlap and locked periods reject new postings."),
+        "cancel_url": "period-list", "submit_label": _("Create period"),
     })
 
 
@@ -190,20 +198,20 @@ def period_edit(request, pk):
         period.business = business
         period.full_clean()
         period.save()
-        messages.success(request, "Fiscal period updated successfully.")
+        messages.success(request, _("Fiscal period updated successfully."))
         return redirect("period-list")
     return render(request, "core/record-form.html", {
         "business": business,
         "form": form,
-        "title": f"Edit {period.name}",
-        "eyebrow": "Accounting controls",
+        "title": _("Edit %(period)s") % {"period": period.name},
+        "eyebrow": _("Accounting controls"),
         "description": (
-            "This period is locked. Its name may be updated, but its boundaries remain protected."
+            _("This period is locked. Its name may be updated, but its boundaries remain protected.")
             if period.is_locked
-            else "Update the name or boundaries without overlapping another period or excluding existing entries."
+            else _("Update the name or boundaries without overlapping another period or excluding existing entries.")
         ),
         "cancel_url": "period-list",
-        "submit_label": "Save changes",
+        "submit_label": _("Save changes"),
     })
 
 
@@ -215,27 +223,33 @@ def period_toggle_lock(request, pk):
         return render(request, "core/no-business.html")
     period = get_object_or_404(FiscalPeriod, pk=pk, business=business)
     if request.method == "GET":
-        action = "reopen" if period.is_locked else "lock"
+        action = _("reopen") if period.is_locked else _("lock")
         return render(request, "core/confirmation.html", {
             "business": business,
-            "eyebrow": "Accounting control",
-            "title": f"{action.title()} {period.name}?",
+            "eyebrow": _("Accounting control"),
+            "title": _("%(action)s %(period)s?") % {
+                "action": action.title(), "period": period.name,
+            },
             "description": (
-                "Reopening permits new postings in this period."
+                _("Reopening permits new postings in this period.")
                 if period.is_locked
-                else "Locking rejects new postings and edits to its financial records."
+                else _("Locking rejects new postings and edits to its financial records.")
             ),
-            "confirmation_text": f"I understand the effect and want to {action} this period.",
-            "submit_label": f"{action.title()} period",
+            "confirmation_text": _("I understand the effect and want to %(action)s this period.") % {"action": action},
+            "submit_label": _("%(action)s period") % {"action": action.title()},
             "cancel_url": "period-list",
         })
     if request.method != "POST" or request.POST.get("confirm") != "yes":
-        messages.error(request, "Confirm the period status change before continuing.")
+        messages.error(request, _("Confirm the period status change before continuing."))
         return redirect("period-list")
     period.is_locked = not period.is_locked
     period.full_clean()
     period.save(update_fields=["is_locked"])
-    messages.success(request, f"{period.name} is now {'locked' if period.is_locked else 'open'}.")
+    state = _("locked") if period.is_locked else _("open")
+    messages.success(
+        request,
+        _("%(period)s is now %(state)s.") % {"period": period.name, "state": state},
+    )
     return redirect("period-list")
 
 
@@ -276,7 +290,7 @@ def _journal_form(request, business, entry, title):
             entry.save()
             formset.instance = entry
             formset.save()
-        messages.success(request, "Draft journal saved successfully.")
+        messages.success(request, _("Draft journal saved successfully."))
         return redirect("journal-detail", pk=entry.pk)
     return render(request, "accounting/journal-form.html", {
         "business": business, "form": form, "formset": formset, "title": title
@@ -300,7 +314,7 @@ def journal_edit(request, pk):
         return render(request, "core/no-business.html")
     entry = get_object_or_404(JournalEntry, pk=pk, business=business)
     if entry.posted or entry.period.is_locked:
-        messages.error(request, "Posted or locked journal entries cannot be edited.")
+        messages.error(request, _("Posted or locked journal entries cannot be edited."))
         return redirect("journal-detail", pk=entry.pk)
     return _journal_form(request, business, entry, "Edit draft journal")
 
@@ -325,7 +339,7 @@ def journal_post(request, pk):
     if business is None:
         return render(request, "core/no-business.html")
     if request.method != "POST" or request.POST.get("confirm") != "yes":
-        messages.error(request, "Confirm posting before continuing.")
+        messages.error(request, _("Confirm posting before continuing."))
         return redirect("journal-detail", pk=pk)
     try:
         post_journal(
@@ -336,7 +350,7 @@ def journal_post(request, pk):
     except ValidationError as exc:
         messages.error(request, " ".join(exc.messages))
         return redirect("journal-detail", pk=pk)
-    messages.success(request, "Journal entry posted. Financial history is now locked.")
+    messages.success(request, _("Journal entry posted. Financial history is now locked."))
     return redirect("journal-detail", pk=pk)
 
 
@@ -375,17 +389,18 @@ def voucher_create(request):
                 ),
                 DjangoMoneyReceiptRepository(),
             )
-        detail = (
-            f" Money receipt {receipt_result.number} is ready."
-            if receipt_result
-            else ""
-        )
-        messages.success(request, f"Voucher created from the posted journal.{detail}")
+        if receipt_result:
+            message = _(
+                "Voucher created from the posted journal. Money receipt %(number)s is ready."
+            ) % {"number": receipt_result.number}
+        else:
+            message = _("Voucher created from the posted journal.")
+        messages.success(request, message)
         return redirect("voucher-list")
     return render(request, "core/record-form.html", {
-        "business": business, "form": form, "title": "Create voucher",
-        "eyebrow": "Financial documents", "description": "Create an immutable voucher from an unassigned posted journal entry.",
-        "cancel_url": "voucher-list", "submit_label": "Create voucher",
+        "business": business, "form": form, "title": _("Create voucher"),
+        "eyebrow": _("Financial documents"), "description": _("Create an immutable voucher from an unassigned posted journal entry."),
+        "cancel_url": "voucher-list", "submit_label": _("Create voucher"),
     })
 
 
@@ -482,7 +497,9 @@ def expense_create(request):
             form.add_error(None, detail)
         else:
             messages.success(
-                request, f"Expense {expense.number} posted with voucher {expense.voucher.number}."
+                request,
+                _("Expense %(expense)s posted with voucher %(voucher)s.")
+                % {"expense": expense.number, "voucher": expense.voucher.number},
             )
             return redirect("expense-detail", pk=expense.pk)
     return render(request, "accounting/expense-form.html", {
@@ -508,7 +525,7 @@ def expense_pay(request, pk):
         return render(request, "core/no-business.html")
     expense = get_object_or_404(_expense_queryset(business), pk=pk)
     if not expense.can_pay:
-        messages.error(request, "This expense has no outstanding payable balance.")
+        messages.error(request, _("This expense has no outstanding payable balance."))
         return redirect("expense-detail", pk=pk)
     form = ExpensePaymentForm(
         request.POST or None, business=business, expense=expense
@@ -537,7 +554,9 @@ def expense_pay(request, pk):
             form.add_error(None, detail)
         else:
             messages.success(
-                request, f"Payment {payment.number} posted with voucher {payment.voucher.number}."
+                request,
+                _("Payment %(payment)s posted with voucher %(voucher)s.")
+                % {"payment": payment.number, "voucher": payment.voucher.number},
             )
             return redirect("expense-detail", pk=expense.pk)
     return render(request, "accounting/expense-payment-form.html", {
@@ -550,14 +569,14 @@ def expense_csv(request):
     business = accounting_context(request, ACCOUNTING_VIEW)
     if business is None:
         return render(request, "core/no-business.html")
-    rows, _ = _filtered_expenses(request, business)
+    rows, _filters = _filtered_expenses(request, business)
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="expense-register.csv"'
     writer = csv.writer(response)
-    writer.writerow([business.name, "Expense register", business.currency])
+    writer.writerow([business.name, _("Expense register"), business.currency])
     writer.writerow([
-        "Number", "Date", "Category", "Description", "Payee", "Reference",
-        "Settlement", "Amount", "Paid", "Outstanding", "Status",
+        _("Number"), _("Date"), _("Category"), _("Description"), _("Payee"), _("Reference"),
+        _("Settlement"), _("Amount"), _("Paid"), _("Outstanding"), _("Status"),
     ])
     for expense in rows:
         writer.writerow([
@@ -581,7 +600,7 @@ def expense_report_pdf(request):
     page_number = 1
 
     def page_header():
-        _, _, header_y = draw_report_header(
+        _width, _height, header_y = draw_report_header(
             pdf, business, "Expense register",
             page_number=page_number,
             metadata=[
@@ -596,13 +615,13 @@ def expense_report_pdf(request):
     columns = [
         (PAGE_MARGIN + 7, "Expense", "left"),
         (PAGE_MARGIN + 82, "Date", "left"),
-        (PAGE_MARGIN + 150, "Category / payee", "left"),
+        (PAGE_MARGIN + 150, _("Category / payee"), "left"),
         (width - PAGE_MARGIN - 110, "Amount", "right"),
         (width - PAGE_MARGIN - 7, "Outstanding", "right"),
     ]
     y = draw_table_header(pdf, y, columns, width=width)
     if not rows:
-        y = draw_empty_state(pdf, y, "No expenses matched the selected filters.", width=width)
+        y = draw_empty_state(pdf, y, _("No expenses matched the selected filters."), width=width)
     for index, expense in enumerate(rows):
         if y < 70:
             draw_page_footer(pdf, width=width, page_number=page_number)
@@ -612,22 +631,22 @@ def expense_report_pdf(request):
             y = draw_table_header(pdf, y, columns, width=width)
         draw_table_row_background(pdf, y, width=width, row_index=index, height=26)
         pdf.setFillColor(INK)
-        pdf.setFont("Helvetica-Bold", 7.5)
+        pdf.setFont(pdf_font(bold=True), 7.5)
         pdf.drawString(PAGE_MARGIN + 7, y + 2, expense.number)
         pdf.setFillColor(INK_SOFT)
-        pdf.setFont("Helvetica", 7)
-        pdf.drawString(PAGE_MARGIN + 82, y + 2, expense.expense_date.strftime("%d %b %Y"))
+        pdf.setFont(pdf_font(), 7)
+        pdf.drawString(PAGE_MARGIN + 82, y + 2, date_format(expense.expense_date, "DATE_FORMAT"))
         pdf.setFillColor(INK)
-        pdf.setFont("Helvetica-Bold", 7.2)
+        pdf.setFont(pdf_font(bold=True), 7.2)
         pdf.drawString(PAGE_MARGIN + 150, y + 4, clean_text(expense.expense_account.name, 34))
         pdf.setFillColor(MUTED)
-        pdf.setFont("Helvetica", 6.6)
+        pdf.setFont(pdf_font(), 6.6)
         pdf.drawString(
             PAGE_MARGIN + 150, y - 6,
             clean_text(expense.payee.name if expense.payee else expense.description, 42),
         )
         pdf.setFillColor(INK)
-        pdf.setFont("Helvetica-Bold", 7.5)
+        pdf.setFont(pdf_font(bold=True), 7.5)
         pdf.drawRightString(width - PAGE_MARGIN - 110, y + 2, f"{expense.amount:,.2f}")
         pdf.drawRightString(width - PAGE_MARGIN - 7, y + 2, f"{expense.balance_due:,.2f}")
         y -= 27
@@ -642,35 +661,35 @@ def expense_report_pdf(request):
 def _expense_document_response(business, title, number, document_date, payee, amount, rows):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
-    width, _ = A4
+    width, _height = A4
     pdf.setTitle(f"{title} {number}")
-    width, _, y = draw_document_header(
-        pdf, business, title, number, document_date, status="Posted"
+    width, _height, y = draw_document_header(
+        pdf, business, title, number, document_date, status=_("Posted")
     )
     pdf.setFillColor(SURFACE_SUBTLE)
     pdf.setStrokeColor(BORDER)
     pdf.roundRect(PAGE_MARGIN, y - 64, width - (2 * PAGE_MARGIN), 70, 5, stroke=1, fill=1)
     pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica-Bold", 7)
-    pdf.drawString(PAGE_MARGIN + 14, y - 14, "PAID / PAYABLE TO")
+    pdf.setFont(pdf_font(bold=True), 7)
+    pdf.drawString(PAGE_MARGIN + 14, y - 14, _("PAID / PAYABLE TO"))
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(PAGE_MARGIN + 14, y - 36, clean_text(payee or "Not specified", 58))
+    pdf.setFont(pdf_font(bold=True), 12)
+    pdf.drawString(PAGE_MARGIN + 14, y - 36, clean_text(payee or _("Not specified"), 58))
     pdf.setFillColor(TEAL)
-    pdf.setFont("Helvetica-Bold", 7)
-    pdf.drawRightString(width - PAGE_MARGIN - 14, y - 14, "AMOUNT")
+    pdf.setFont(pdf_font(bold=True), 7)
+    pdf.drawRightString(width - PAGE_MARGIN - 14, y - 14, _("AMOUNT"))
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 19)
+    pdf.setFont(pdf_font(bold=True), 19)
     pdf.drawRightString(width - PAGE_MARGIN - 14, y - 41, f"{business.currency} {amount:,.2f}")
     y -= 94
     for label, value in rows:
         pdf.setStrokeColor(BORDER)
         pdf.line(PAGE_MARGIN, y - 8, width - PAGE_MARGIN, y - 8)
         pdf.setFillColor(MUTED)
-        pdf.setFont("Helvetica", 8)
-        pdf.drawString(PAGE_MARGIN, y, label)
+        pdf.setFont(pdf_font(), 8)
+        pdf.drawString(PAGE_MARGIN, y, _(str(label)))
         pdf.setFillColor(INK_SOFT)
-        pdf.setFont("Helvetica-Bold", 8)
+        pdf.setFont(pdf_font(bold=True), 8)
         pdf.drawRightString(width - PAGE_MARGIN, y, clean_text(value, 70))
         y -= 26
     draw_page_footer(pdf, width=width, page_number=1)
@@ -688,15 +707,15 @@ def expense_pdf(request, pk):
         return render(request, "core/no-business.html")
     expense = get_object_or_404(_expense_queryset(business), pk=pk)
     return _expense_document_response(
-        business, "Expense voucher", expense.voucher.number, expense.expense_date,
+        business, _("Expense voucher"), expense.voucher.number, expense.expense_date,
         expense.payee.name if expense.payee else None, expense.amount,
         [
-            ("Expense category", str(expense.expense_account)),
-            ("Description", expense.description),
-            ("Settlement", expense.get_settlement_display()),
-            ("Paid from / liability", str(expense.payment_account or expense.payable_account)),
-            ("External reference", expense.external_reference or "—"),
-            ("Journal reference", expense.journal_entry.reference),
+            (_("Expense category"), str(expense.expense_account)),
+            (_("Description"), expense.description),
+            (_("Settlement"), expense.get_settlement_display()),
+            (_("Paid from / liability"), str(expense.payment_account or expense.payable_account)),
+            (_("External reference"), expense.external_reference or "—"),
+            (_("Journal reference"), expense.journal_entry.reference),
         ],
     )
 
@@ -712,14 +731,14 @@ def expense_payment_pdf(request, pk):
         ), business=business, pk=pk,
     )
     return _expense_document_response(
-        business, "Expense payment voucher", payment.voucher.number,
+        business, _("Expense payment voucher"), payment.voucher.number,
         payment.payment_date, payment.expense.payee.name, payment.amount,
         [
-            ("Expense", f"{payment.expense.number} — {payment.expense.description}"),
-            ("Paid from", str(payment.payment_account)),
-            ("Allocation", payment.number),
-            ("Journal reference", payment.journal_entry.reference),
-            ("Notes", payment.notes or "—"),
+            (_("Expense"), f"{payment.expense.number} — {payment.expense.description}"),
+            (_("Paid from"), str(payment.payment_account)),
+            (_("Allocation"), payment.number),
+            (_("Journal reference"), payment.journal_entry.reference),
+            (_("Notes"), payment.notes or "—"),
         ],
     )
 import csv

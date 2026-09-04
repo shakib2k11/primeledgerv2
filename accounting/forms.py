@@ -15,7 +15,9 @@ from accounting.models import (
     JournalLine,
     Voucher,
 )
+from accounting.form_fields import OperationalAccountChoiceField
 from core.models import Party
+from django.utils.translation import gettext_lazy as _
 
 
 class AccountForm(forms.ModelForm):
@@ -28,14 +30,14 @@ class AccountForm(forms.ModelForm):
         if self.business and Account.objects.filter(
             business=self.business, code__iexact=code
         ).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError("This account code is already in use.")
+            raise forms.ValidationError(_("This account code is already in use."))
         return code
 
     class Meta:
         model = Account
         fields = ["code", "name", "account_type", "system_role", "is_active"]
         help_texts = {
-            "system_role": "Optional stable posting role used by automated accounting workflows.",
+            "system_role": _("Optional stable posting role used by automated accounting workflows."),
         }
 
 
@@ -50,7 +52,7 @@ class AccountTemplateLineForm(forms.ModelForm):
     def __init__(self, *args, template=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.instance.template = template
-        self.fields["system_role"].help_text = (
+        self.fields["system_role"].help_text = _(
             "Assign only when automated posting depends on this account."
         )
 
@@ -60,8 +62,8 @@ class AccountTemplateLineForm(forms.ModelForm):
             "code", "name", "account_type", "system_role", "account_is_active", "is_active"
         ]
         labels = {
-            "account_is_active": "Active when copied",
-            "is_active": "Include in template",
+            "account_is_active": _("Active when copied"),
+            "is_active": _("Include in template"),
         }
 
 
@@ -71,7 +73,7 @@ class FiscalPeriodForm(forms.ModelForm):
         if self.instance.pk and self.instance.is_locked:
             for field_name in ("starts_on", "ends_on"):
                 self.fields[field_name].disabled = True
-                self.fields[field_name].help_text = "Reopen the period before changing its boundary."
+                self.fields[field_name].help_text = _("Reopen the period before changing its boundary.")
 
     class Meta:
         model = FiscalPeriod
@@ -120,12 +122,12 @@ class BaseJournalLineFormSet(BaseInlineFormSet):
             form for form in self.forms if form.cleaned_data and not form.cleaned_data.get("DELETE")
         ]
         if len(active_forms) < 2:
-            raise forms.ValidationError("A journal entry requires at least two lines.")
+            raise forms.ValidationError(_("A journal entry requires at least two lines."))
         for form in active_forms:
             debit = form.cleaned_data.get("debit") or Decimal("0")
             credit = form.cleaned_data.get("credit") or Decimal("0")
             if (debit > 0) == (credit > 0):
-                raise forms.ValidationError("Each line must contain either a debit or a credit amount.")
+                raise forms.ValidationError(_("Each line must contain either a debit or a credit amount."))
 
 
 JournalLineFormSet = inlineformset_factory(
@@ -175,10 +177,10 @@ class ExpenseRecordForm(forms.Form):
     expense_account = forms.ModelChoiceField(queryset=Account.objects.none())
     payee = forms.ModelChoiceField(
         queryset=Party.objects.none(), required=False,
-        help_text="Required when the expense will be paid later.",
+        help_text=_("Required when the expense will be paid later."),
     )
     settlement = forms.ChoiceField(choices=ExpenseRecord.Settlement.choices)
-    payment_account = forms.ModelChoiceField(
+    payment_account = OperationalAccountChoiceField(
         queryset=Account.objects.none(), required=False
     )
     amount = forms.DecimalField(
@@ -187,11 +189,11 @@ class ExpenseRecordForm(forms.Form):
     description = forms.CharField(max_length=255)
     external_reference = forms.CharField(
         max_length=80, required=False,
-        help_text="Bill, payroll, lease, or supplier reference.",
+        help_text=_("Bill, payroll, lease, or supplier reference."),
     )
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
     confirm = forms.BooleanField(
-        label="I confirm this expense should be posted to the ledger."
+        label=_("I confirm this expense should be posted to the ledger.")
     )
 
     def __init__(self, *args, business=None, **kwargs):
@@ -218,7 +220,7 @@ class ExpenseRecordForm(forms.Form):
     def clean_expense_date(self):
         value = self.cleaned_data["expense_date"]
         if value > timezone.localdate():
-            raise forms.ValidationError("Expense date cannot be in the future.")
+            raise forms.ValidationError(_("Expense date cannot be in the future."))
         return value
 
     def clean(self):
@@ -226,10 +228,10 @@ class ExpenseRecordForm(forms.Form):
         settlement = cleaned.get("settlement")
         if settlement == ExpenseRecord.Settlement.PAID:
             if not cleaned.get("payment_account"):
-                self.add_error("payment_account", "Select the account used to pay.")
+                self.add_error("payment_account", _("Select the account used to pay."))
         elif settlement == ExpenseRecord.Settlement.PAYABLE:
             if not cleaned.get("payee"):
-                self.add_error("payee", "Select the person or organization to be paid.")
+                self.add_error("payee", _("Select the person or organization to be paid."))
             cleaned["payment_account"] = None
         return cleaned
 
@@ -238,13 +240,13 @@ class ExpensePaymentForm(forms.Form):
     payment_date = forms.DateField(
         widget=forms.DateInput(attrs={"type": "date"}), initial=timezone.localdate
     )
-    payment_account = forms.ModelChoiceField(queryset=Account.objects.none())
+    payment_account = OperationalAccountChoiceField(queryset=Account.objects.none())
     amount = forms.DecimalField(
         max_digits=14, decimal_places=2, min_value=Decimal("0.01")
     )
     notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
-    confirm = forms.BooleanField(label="I confirm this payment should be posted.")
+    confirm = forms.BooleanField(label=_("I confirm this payment should be posted."))
 
     def __init__(self, *args, business=None, expense=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -266,7 +268,7 @@ class ExpensePaymentForm(forms.Form):
     def clean_payment_date(self):
         value = self.cleaned_data["payment_date"]
         if value > timezone.localdate():
-            raise forms.ValidationError("Payment date cannot be in the future.")
+            raise forms.ValidationError(_("Payment date cannot be in the future."))
         if value < self.expense.expense_date:
-            raise forms.ValidationError("Payment date cannot precede the expense date.")
+            raise forms.ValidationError(_("Payment date cannot precede the expense date."))
         return value

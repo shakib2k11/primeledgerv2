@@ -1,0 +1,42 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Prime Ledger\n"
+"Language: bn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Clear selection"
+msgstr "নির্বাচন মুছুন"
+
+msgid "Credit Accounts Payable; allocate cash payments later"
+msgstr "প্রদেয় হিসাবে ক্রেডিট করুন; পরে নগদ পরিশোধ বরাদ্দ করুন"
+
+msgid "Credit the selected Cash, Bank, or Mobile Financial Services account"
+msgstr "নির্বাচিত নগদ, ব্যাংক বা মোবাইল আর্থিক সেবা হিসাবে ক্রেডিট করুন"
+
+msgid "Difference:"
+msgstr "পার্থক্য:"
+
+msgid "Debit Accounts Receivable and credit Sales Revenue."
+msgstr "প্রাপ্য হিসাব ডেবিট এবং বিক্রয় আয় ক্রেডিট হবে।"
+
+msgid "Debit Inventory and credit Accounts Payable."
+msgstr "মজুত ডেবিট এবং প্রদেয় হিসাব ক্রেডিট হবে।"
+
+msgid "Debit the selected payment account and credit Sales Revenue."
+msgstr "নির্বাচিত অর্থের হিসাব ডেবিট এবং বিক্রয় আয় ক্রেডিট হবে।"
+
+msgid "Debit Inventory and credit the selected payment account."
+msgstr "মজুত ডেবিট এবং নির্বাচিত অর্থের হিসাব ক্রেডিট হবে।"
+
+msgid "No matching options"
+msgstr "কোনো মিল পাওয়া যায়নি"
+
+msgid "Ready to set off"
+msgstr "সমন্বয়ের জন্য প্রস্তুত"
+
+msgid "Search options"
+msgstr "বিকল্প খুঁজুন"

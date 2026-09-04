@@ -725,8 +725,8 @@ class TradeWorkflowTests(TestCase):
                 "document_date": "2026-08-26",
                 "party": self.customer.pk,
                 "period": self.period.pk,
-                "debit_account": self.receivable.pk,
-                "credit_account": self.revenue.pk,
+                "settlement_method": "deferred",
+                "funds_account": "",
                 "discount_type": TradeDocument.DiscountType.FIXED,
                 "discount_value": "20.00",
                 "notes": "Counter sale",
@@ -780,6 +780,74 @@ class TradeWorkflowTests(TestCase):
             self.assertContains(response, "data-line-amount")
             self.assertContains(response, "Calculated amount")
 
+    def test_trade_forms_hide_ledger_sides_and_derive_settlement_accounts(self):
+        for route, deferred_label in (
+            ("sale-create", "Receive later"),
+            ("purchase-create", "Pay later"),
+        ):
+            response = self.client.get(reverse(route))
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, deferred_label)
+            self.assertContains(response, "Accounting handled automatically")
+            self.assertNotContains(response, 'name="debit_account"')
+            self.assertNotContains(response, 'name="credit_account"')
+
+        response = self.client.post(
+            reverse("purchase-create"),
+            {
+                "document_date": "2026-08-26",
+                "party": self.supplier.pk,
+                "period": self.period.pk,
+                "settlement_method": "cash",
+                "funds_account": self.cash.pk,
+                "notes": "Paid stock purchase",
+                "lines-TOTAL_FORMS": "1",
+                "lines-INITIAL_FORMS": "0",
+                "lines-MIN_NUM_FORMS": "1",
+                "lines-MAX_NUM_FORMS": "1000",
+                "lines-0-product": self.product.pk,
+                "lines-0-description": "Tea",
+                "lines-0-quantity": "1.000",
+                "lines-0-unit_price": "80.00",
+            },
+        )
+        purchase = TradeDocument.objects.get(kind=TradeDocument.Kind.PURCHASE)
+        self.assertRedirects(response, reverse("purchase-detail", args=[purchase.pk]))
+        self.assertEqual(purchase.debit_account, self.inventory)
+        self.assertEqual(purchase.credit_account, self.cash)
+
+    def test_trade_form_rejects_payment_account_from_another_business(self):
+        other_business = Business.objects.create(name="Other", slug="other")
+        foreign_cash = Account.objects.create(
+            business=other_business,
+            code="1010",
+            name="Foreign cash",
+            account_type=Account.Type.ASSET,
+            system_role=Account.SystemRole.CASH,
+        )
+        response = self.client.post(
+            reverse("sale-create"),
+            {
+                "document_date": "2026-08-26",
+                "party": self.customer.pk,
+                "period": self.period.pk,
+                "settlement_method": "cash",
+                "funds_account": foreign_cash.pk,
+                "discount_type": TradeDocument.DiscountType.NONE,
+                "discount_value": "0.00",
+                "lines-TOTAL_FORMS": "1",
+                "lines-INITIAL_FORMS": "0",
+                "lines-MIN_NUM_FORMS": "1",
+                "lines-MAX_NUM_FORMS": "1000",
+                "lines-0-product": self.product.pk,
+                "lines-0-quantity": "1.000",
+                "lines-0-unit_price": "120.00",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Select a valid choice")
+        self.assertFalse(TradeDocument.objects.exists())
+
     def test_ui_rejects_discount_that_consumes_the_sale(self):
         response = self.client.post(
             reverse("sale-create"),
@@ -787,8 +855,8 @@ class TradeWorkflowTests(TestCase):
                 "document_date": "2026-08-26",
                 "party": self.customer.pk,
                 "period": self.period.pk,
-                "debit_account": self.receivable.pk,
-                "credit_account": self.revenue.pk,
+                "settlement_method": "deferred",
+                "funds_account": "",
                 "discount_type": TradeDocument.DiscountType.FIXED,
                 "discount_value": "120.00",
                 "notes": "Invalid full discount",

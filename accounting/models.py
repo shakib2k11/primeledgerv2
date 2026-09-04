@@ -5,28 +5,29 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from core.models import Business, Party
+from django.utils.translation import gettext_lazy as _
 
 
 class Account(models.Model):
     class Type(models.TextChoices):
-        ASSET = "asset", "Asset"
-        LIABILITY = "liability", "Liability"
-        EQUITY = "equity", "Equity"
-        INCOME = "income", "Income"
-        EXPENSE = "expense", "Expense"
+        ASSET = "asset", _("Asset")
+        LIABILITY = "liability", _("Liability")
+        EQUITY = "equity", _("Equity")
+        INCOME = "income", _("Income")
+        EXPENSE = "expense", _("Expense")
 
     class SystemRole(models.TextChoices):
-        CASH = "cash", "Cash"
-        BANK = "bank", "Bank"
-        MOBILE_MONEY = "mobile_money", "Mobile financial services"
-        ACCOUNTS_RECEIVABLE = "accounts_receivable", "Accounts receivable"
-        INVENTORY = "inventory", "Inventory"
-        ACCOUNTS_PAYABLE = "accounts_payable", "Accounts payable"
-        OWNER_CAPITAL = "owner_capital", "Owner capital"
-        RETAINED_EARNINGS = "retained_earnings", "Retained earnings"
-        SALES_REVENUE = "sales_revenue", "Sales revenue"
-        SERVICE_REVENUE = "service_revenue", "Service revenue"
-        COST_OF_GOODS_SOLD = "cost_of_goods_sold", "Cost of goods sold"
+        CASH = "cash", _("Cash")
+        BANK = "bank", _("Bank")
+        MOBILE_MONEY = "mobile_money", _("Mobile financial services")
+        ACCOUNTS_RECEIVABLE = "accounts_receivable", _("Accounts receivable")
+        INVENTORY = "inventory", _("Inventory")
+        ACCOUNTS_PAYABLE = "accounts_payable", _("Accounts payable")
+        OWNER_CAPITAL = "owner_capital", _("Owner capital")
+        RETAINED_EARNINGS = "retained_earnings", _("Retained earnings")
+        SALES_REVENUE = "sales_revenue", _("Sales revenue")
+        SERVICE_REVENUE = "service_revenue", _("Service revenue")
+        COST_OF_GOODS_SOLD = "cost_of_goods_sold", _("Cost of goods sold")
 
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="accounts")
     code = models.CharField(max_length=20)
@@ -56,7 +57,8 @@ class Account(models.Model):
         expected_type = SYSTEM_ROLE_ACCOUNT_TYPES.get(self.system_role)
         if expected_type and self.account_type != expected_type:
             raise ValidationError({
-                "system_role": f"This posting role requires an {expected_type} account."
+                "system_role": _("This posting role requires an %(type)s account.")
+                % {"type": expected_type}
             })
 
 
@@ -107,7 +109,8 @@ class AccountTemplateLine(models.Model):
         expected_type = SYSTEM_ROLE_ACCOUNT_TYPES.get(self.system_role)
         if expected_type and self.account_type != expected_type:
             raise ValidationError({
-                "system_role": f"This posting role requires an {expected_type} account."
+                "system_role": _("This posting role requires an %(type)s account.")
+                % {"type": expected_type}
             })
 
     def __str__(self):
@@ -154,13 +157,13 @@ class FiscalPeriod(models.Model):
 
     def clean(self):
         if self.starts_on > self.ends_on:
-            raise ValidationError("A fiscal period must end on or after it starts.")
+            raise ValidationError(_("A fiscal period must end on or after it starts."))
         if self.business_id and FiscalPeriod.objects.filter(
             business_id=self.business_id,
             starts_on__lte=self.ends_on,
             ends_on__gte=self.starts_on,
         ).exclude(pk=self.pk).exists():
-            raise ValidationError("Fiscal periods for a business cannot overlap.")
+            raise ValidationError(_("Fiscal periods for a business cannot overlap."))
         if self.pk:
             previous = FiscalPeriod.objects.filter(pk=self.pk).first()
             if previous and previous.is_locked and (
@@ -168,11 +171,11 @@ class FiscalPeriod(models.Model):
                 or previous.ends_on != self.ends_on
                 or previous.business_id != self.business_id
             ):
-                raise ValidationError("A locked fiscal period's boundaries cannot be changed.")
+                raise ValidationError(_("A locked fiscal period's boundaries cannot be changed."))
         if self.pk and self.journal_entries.exclude(
             entry_date__range=(self.starts_on, self.ends_on)
         ).exists():
-            raise ValidationError("Fiscal period boundaries must include all existing entries.")
+            raise ValidationError(_("Fiscal period boundaries must include all existing entries."))
 
 
 class JournalEntry(models.Model):
@@ -202,27 +205,27 @@ class JournalEntry(models.Model):
 
     def clean(self):
         if self.period_id and self.business_id != self.period.business_id:
-            raise ValidationError("Journal entry and fiscal period must belong to the same business.")
+            raise ValidationError(_("Journal entry and fiscal period must belong to the same business."))
         if self.period_id and not (
             self.period.starts_on <= self.entry_date <= self.period.ends_on
         ):
-            raise ValidationError("Journal entry date must fall within its fiscal period.")
+            raise ValidationError(_("Journal entry date must fall within its fiscal period."))
 
     def validate_for_posting(self):
         self.clean()
         if self.period.is_locked:
-            raise ValidationError("This fiscal period is locked.")
+            raise ValidationError(_("This fiscal period is locked."))
         lines = list(self.lines.all())
         if len(lines) < 2:
-            raise ValidationError("A journal entry requires at least two lines.")
+            raise ValidationError(_("A journal entry requires at least two lines."))
         for line in lines:
             line.clean()
             if line.account.business_id != self.business_id:
-                raise ValidationError("Every account must belong to the journal business.")
+                raise ValidationError(_("Every account must belong to the journal business."))
             if line.party_id and line.party.business_id != self.business_id:
-                raise ValidationError("Every party must belong to the journal business.")
+                raise ValidationError(_("Every party must belong to the journal business."))
         if self.total_debit <= 0 or self.total_debit != self.total_credit:
-            raise ValidationError("A journal entry must balance before posting.")
+            raise ValidationError(_("A journal entry must balance before posting."))
 
     def post(self):
         if self.posted:
@@ -239,12 +242,12 @@ class JournalEntry(models.Model):
             if previous and previous["posted"]:
                 mutable_fields = ("period_id", "business_id", "reference", "description", "entry_date")
                 if not self.posted or any(previous[field] != getattr(self, field) for field in mutable_fields):
-                    raise ValidationError("Posted journal entries cannot be edited or returned to draft.")
+                    raise ValidationError(_("Posted journal entries cannot be edited or returned to draft."))
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         if self.posted or self.period.is_locked:
-            raise ValidationError("Posted or locked journal entries cannot be deleted.")
+            raise ValidationError(_("Posted or locked journal entries cannot be deleted."))
         return super().delete(*args, **kwargs)
 
 
@@ -269,34 +272,34 @@ class JournalLine(models.Model):
 
     def clean(self):
         if self.debit and self.credit:
-            raise ValidationError("A journal line cannot have both debit and credit.")
+            raise ValidationError(_("A journal line cannot have both debit and credit."))
         if not self.debit and not self.credit:
-            raise ValidationError("A journal line requires a debit or credit amount.")
+            raise ValidationError(_("A journal line requires a debit or credit amount."))
         if self.entry_id and self.account_id and self.entry.business_id != self.account.business_id:
-            raise ValidationError("Journal line account must belong to the journal business.")
+            raise ValidationError(_("Journal line account must belong to the journal business."))
         if self.entry_id and self.party_id and self.entry.business_id != self.party.business_id:
-            raise ValidationError("Journal line party must belong to the journal business.")
+            raise ValidationError(_("Journal line party must belong to the journal business."))
 
     def save(self, *args, **kwargs):
         if self.entry_id and (self.entry.posted or self.entry.period.is_locked):
-            raise ValidationError("Lines in posted or locked journal entries cannot be edited.")
+            raise ValidationError(_("Lines in posted or locked journal entries cannot be edited."))
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         if self.entry.posted or self.entry.period.is_locked:
-            raise ValidationError("Lines in posted or locked journal entries cannot be deleted.")
+            raise ValidationError(_("Lines in posted or locked journal entries cannot be deleted."))
         return super().delete(*args, **kwargs)
 
 
 class Voucher(models.Model):
     class Type(models.TextChoices):
-        SALE = "sale", "Sale"
-        PURCHASE = "purchase", "Purchase"
-        RECEIPT = "receipt", "Receipt"
-        PAYMENT = "payment", "Payment"
-        CONTRA = "contra", "Contra"
-        EXPENSE = "expense", "Expense"
-        RETURN = "return", "Return"
+        SALE = "sale", _("Sale")
+        PURCHASE = "purchase", _("Purchase")
+        RECEIPT = "receipt", _("Receipt")
+        PAYMENT = "payment", _("Payment")
+        CONTRA = "contra", _("Contra")
+        EXPENSE = "expense", _("Expense")
+        RETURN = "return", _("Return")
 
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="vouchers")
     voucher_type = models.CharField(max_length=10, choices=Type.choices)
@@ -315,13 +318,13 @@ class Voucher(models.Model):
 
     def clean(self):
         if self.journal_entry_id and self.journal_entry.business_id != self.business_id:
-            raise ValidationError("Voucher and journal entry must belong to the same business.")
+            raise ValidationError(_("Voucher and journal entry must belong to the same business."))
         if self.party_id and self.party.business_id != self.business_id:
-            raise ValidationError("Voucher and party must belong to the same business.")
+            raise ValidationError(_("Voucher and party must belong to the same business."))
         if self.journal_entry_id and self.voucher_date != self.journal_entry.entry_date:
-            raise ValidationError("Voucher and journal entry dates must match.")
+            raise ValidationError(_("Voucher and journal entry dates must match."))
         if self.journal_entry_id and not self.journal_entry.posted:
-            raise ValidationError("A voucher must reference a posted journal entry.")
+            raise ValidationError(_("A voucher must reference a posted journal entry."))
         if self.journal_entry_id:
             transaction_lines = self.journal_entry.lines.all()
             if self.party_id:
@@ -334,16 +337,16 @@ class Voucher(models.Model):
             )
             if self.total not in {transaction_debit, transaction_credit}:
                 raise ValidationError(
-                    "Voucher total must match the party-facing journal amount."
+                    _("Voucher total must match the party-facing journal amount.")
                 )
 
     def save(self, *args, **kwargs):
         if self.pk:
-            raise ValidationError("Financial vouchers cannot be edited after creation.")
+            raise ValidationError(_("Financial vouchers cannot be edited after creation."))
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValidationError("Financial vouchers cannot be deleted.")
+        raise ValidationError(_("Financial vouchers cannot be deleted."))
 
 
 class MoneyReceipt(models.Model):
@@ -396,19 +399,19 @@ class MoneyReceipt(models.Model):
         from accounting.domain.policies import LIQUID_ACCOUNT_SYSTEM_ROLES
 
         if self.voucher_id and self.voucher.business_id != self.business_id:
-            raise ValidationError("Money receipt and voucher must belong to the same business.")
+            raise ValidationError(_("Money receipt and voucher must belong to the same business."))
         if self.party_id and self.party.business_id != self.business_id:
-            raise ValidationError("Money receipt and party must belong to the same business.")
+            raise ValidationError(_("Money receipt and party must belong to the same business."))
         if self.payment_account_id and self.payment_account.business_id != self.business_id:
-            raise ValidationError("Money receipt payment account must belong to the same business.")
+            raise ValidationError(_("Money receipt payment account must belong to the same business."))
         if self.voucher_id and not self.voucher.journal_entry.posted:
-            raise ValidationError("A money receipt requires a posted voucher journal.")
+            raise ValidationError(_("A money receipt requires a posted voucher journal."))
         if self.voucher_id and self.amount != self.voucher.total:
-            raise ValidationError("Money receipt amount must match its voucher.")
+            raise ValidationError(_("Money receipt amount must match its voucher."))
         if self.voucher_id and self.receipt_date != self.voucher.voucher_date:
-            raise ValidationError("Money receipt and voucher dates must match.")
+            raise ValidationError(_("Money receipt and voucher dates must match."))
         if self.voucher_id and self.party_id != self.voucher.party_id:
-            raise ValidationError("Money receipt and voucher parties must match.")
+            raise ValidationError(_("Money receipt and voucher parties must match."))
         if (
             self.voucher_id
             and self.voucher.voucher_type == Voucher.Type.SALE
@@ -418,22 +421,22 @@ class MoneyReceipt(models.Model):
             )
         ):
             raise ValidationError(
-                "A sale money receipt requires a Cash, Bank, or Mobile Financial Services account."
+                _("A sale money receipt requires a Cash, Bank, or Mobile Financial Services account.")
             )
 
     def save(self, *args, **kwargs):
         if self.pk:
-            raise ValidationError("Money receipts cannot be edited after creation.")
+            raise ValidationError(_("Money receipts cannot be edited after creation."))
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValidationError("Money receipts cannot be deleted.")
+        raise ValidationError(_("Money receipts cannot be deleted."))
 
 
 class ExpenseRecord(models.Model):
     class Settlement(models.TextChoices):
-        PAID = "paid", "Paid now"
-        PAYABLE = "payable", "Pay later"
+        PAID = "paid", _("Paid now")
+        PAYABLE = "payable", _("Pay later")
 
     business = models.ForeignKey(
         Business, on_delete=models.CASCADE, related_name="expense_records"
@@ -535,18 +538,16 @@ class ExpenseRecord(models.Model):
 
     def clean(self):
         if self.number and (len(self.number) != 8 or not self.number.isdigit()):
-            raise ValidationError({"number": "Expense number must contain eight digits."})
+            raise ValidationError({"number": _("Expense number must contain eight digits.")})
         for field in (
             "payee", "expense_account", "payment_account", "payable_account",
             "journal_entry", "voucher",
         ):
             value = getattr(self, field, None)
             if value and value.business_id != self.business_id:
-                raise ValidationError(
-                    f"Expense {field.replace('_', ' ')} must belong to the same business."
-                )
+                raise ValidationError(_("Expense relationships must belong to the same business."))
         if self.expense_account_id and self.expense_account.account_type != Account.Type.EXPENSE:
-            raise ValidationError("Expense category must be an expense account.")
+            raise ValidationError(_("Expense category must be an expense account."))
         liquid_roles = {
             Account.SystemRole.CASH,
             Account.SystemRole.BANK,
@@ -554,36 +555,36 @@ class ExpenseRecord(models.Model):
         }
         if self.settlement == self.Settlement.PAID:
             if not self.payment_account_id or self.payment_account.system_role not in liquid_roles:
-                raise ValidationError("Paid expenses require a Cash, Bank, or Mobile Financial Services account.")
+                raise ValidationError(_("Paid expenses require a Cash, Bank, or Mobile Financial Services account."))
             if self.payable_account_id:
-                raise ValidationError("A paid expense cannot use a payable account.")
+                raise ValidationError(_("A paid expense cannot use a payable account."))
         elif self.settlement == self.Settlement.PAYABLE:
             if not self.payee_id:
-                raise ValidationError("A pay-later expense requires a payee.")
+                raise ValidationError(_("A pay-later expense requires a payee."))
             if (
                 not self.payable_account_id
                 or self.payable_account.system_role != Account.SystemRole.ACCOUNTS_PAYABLE
             ):
-                raise ValidationError("Pay-later expenses require the Accounts Payable account.")
+                raise ValidationError(_("Pay-later expenses require the Accounts Payable account."))
             if self.payment_account_id:
-                raise ValidationError("A pay-later expense cannot have an immediate payment account.")
+                raise ValidationError(_("A pay-later expense cannot have an immediate payment account."))
         if self.journal_entry_id and not self.journal_entry.posted:
-            raise ValidationError("An expense requires a posted journal entry.")
+            raise ValidationError(_("An expense requires a posted journal entry."))
         if self.voucher_id:
             if self.voucher.voucher_type != Voucher.Type.EXPENSE:
-                raise ValidationError("An expense requires an expense voucher.")
+                raise ValidationError(_("An expense requires an expense voucher."))
             if self.voucher.total != self.amount:
-                raise ValidationError("Expense and voucher amounts must match.")
+                raise ValidationError(_("Expense and voucher amounts must match."))
             if self.voucher.journal_entry_id != self.journal_entry_id:
-                raise ValidationError("Expense voucher must use the expense journal entry.")
+                raise ValidationError(_("Expense voucher must use the expense journal entry."))
 
     def save(self, *args, **kwargs):
         if self.pk:
-            raise ValidationError("Posted expenses cannot be edited.")
+            raise ValidationError(_("Posted expenses cannot be edited."))
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValidationError("Posted expenses cannot be deleted.")
+        raise ValidationError(_("Posted expenses cannot be deleted."))
 
 
 class ExpensePayment(models.Model):
@@ -644,31 +645,29 @@ class ExpensePayment(models.Model):
         for field in ("expense", "payment_account", "journal_entry", "voucher"):
             value = getattr(self, field, None)
             if value and value.business_id != self.business_id:
-                raise ValidationError(
-                    f"Expense payment {field.replace('_', ' ')} must belong to the same business."
-                )
+                raise ValidationError(_("Expense payment relationships must belong to the same business."))
         if self.expense_id and self.expense.settlement != ExpenseRecord.Settlement.PAYABLE:
-            raise ValidationError("Payments can be allocated only to pay-later expenses.")
+            raise ValidationError(_("Payments can be allocated only to pay-later expenses."))
         if self.payment_account_id and self.payment_account.system_role not in {
             Account.SystemRole.CASH,
             Account.SystemRole.BANK,
             Account.SystemRole.MOBILE_MONEY,
         }:
-            raise ValidationError("Payment account must be Cash, Bank, or Mobile Financial Services.")
+            raise ValidationError(_("Payment account must be Cash, Bank, or Mobile Financial Services."))
         if self.journal_entry_id and not self.journal_entry.posted:
-            raise ValidationError("An expense payment requires a posted journal entry.")
+            raise ValidationError(_("An expense payment requires a posted journal entry."))
         if self.voucher_id:
             if self.voucher.voucher_type != Voucher.Type.PAYMENT:
-                raise ValidationError("An expense payment requires a payment voucher.")
+                raise ValidationError(_("An expense payment requires a payment voucher."))
             if self.voucher.total != self.amount:
-                raise ValidationError("Expense payment and voucher amounts must match.")
+                raise ValidationError(_("Expense payment and voucher amounts must match."))
             if self.voucher.journal_entry_id != self.journal_entry_id:
-                raise ValidationError("Payment voucher must use the payment journal entry.")
+                raise ValidationError(_("Payment voucher must use the payment journal entry."))
 
     def save(self, *args, **kwargs):
         if self.pk:
-            raise ValidationError("Posted expense payments cannot be edited.")
+            raise ValidationError(_("Posted expense payments cannot be edited."))
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValidationError("Posted expense payments cannot be deleted.")
+        raise ValidationError(_("Posted expense payments cannot be deleted."))

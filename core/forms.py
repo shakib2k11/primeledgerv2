@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .models import Business, InventoryUnit, Party, Product, StockMovement
+from django.utils.translation import gettext_lazy as _
 
 
 class BusinessForm(forms.ModelForm):
@@ -17,10 +18,10 @@ class BusinessForm(forms.ModelForm):
         ]
         widgets = {"address": forms.Textarea(attrs={"rows": 3})}
         help_texts = {
-            "slug": "A unique lowercase identifier, for example amina-traders.",
-            "currency": "Three-letter currency code. Use BDT for Bangladesh.",
-            "locale": "Use en-bd for English or bn-bd for Bangla-ready presentation.",
-            "inherit_default_units": "Make Super Admin-maintained inventory units available to this business.",
+            "slug": _("A unique lowercase identifier, for example amina-traders."),
+            "currency": _("Three-letter currency code. Use BDT for Bangladesh."),
+            "locale": _("Use en-bd for English or bn-bd for Bangla-ready presentation."),
+            "inherit_default_units": _("Make Super Admin-maintained inventory units available to this business."),
         }
 
 
@@ -29,20 +30,20 @@ class BusinessAdminCreationForm(forms.Form):
     first_name = forms.CharField(max_length=150, required=False)
     last_name = forms.CharField(max_length=150, required=False)
     email = forms.EmailField(required=False)
-    password1 = forms.CharField(label="Password", widget=forms.PasswordInput)
-    password2 = forms.CharField(label="Confirm password", widget=forms.PasswordInput)
+    password1 = forms.CharField(label=_("Password"), widget=forms.PasswordInput)
+    password2 = forms.CharField(label=_("Confirm password"), widget=forms.PasswordInput)
 
     def clean_username(self):
         username = self.cleaned_data["username"].strip()
         if get_user_model().objects.filter(username__iexact=username).exists():
-            raise forms.ValidationError("A user with this username already exists.")
+            raise forms.ValidationError(_("A user with this username already exists."))
         return username
 
     def clean(self):
         cleaned = super().clean()
         password = cleaned.get("password1")
         if password and password != cleaned.get("password2"):
-            self.add_error("password2", "The passwords do not match.")
+            self.add_error("password2", _("The passwords do not match."))
         if password:
             try:
                 validate_password(password)
@@ -63,7 +64,7 @@ class PartyForm(forms.ModelForm):
             name__iexact=cleaned.get("name", ""),
             kind=cleaned.get("kind"),
         ).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError("A contact with this name and type already exists.")
+            raise forms.ValidationError(_("A contact with this name and type already exists."))
         return cleaned
 
     class Meta:
@@ -80,14 +81,14 @@ class ProductForm(forms.ModelForm):
         self.fields["unit"].queryset = InventoryUnit.objects.available_to(business).order_by(
             "business_id", "name"
         )
-        self.fields["unit"].empty_label = "Select a unit"
+        self.fields["unit"].empty_label = _("Select a unit")
 
     def clean_sku(self):
         sku = self.cleaned_data["sku"].strip()
         if sku and self.business and Product.objects.filter(
             business=self.business, sku__iexact=sku
         ).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError("This SKU is already in use in this business.")
+            raise forms.ValidationError(_("This SKU is already in use in this business."))
         return sku
 
     class Meta:
@@ -99,11 +100,11 @@ class InventoryUnitForm(forms.ModelForm):
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.instance.business = business
-        self.fields["code"].help_text = "Stable lowercase identifier, for example carton or kilogram."
-        self.fields["symbol"].help_text = "Short display label, for example ctn or kg."
+        self.fields["code"].help_text = _("Stable lowercase identifier, for example carton or kilogram.")
+        self.fields["symbol"].help_text = _("Short display label, for example ctn or kg.")
         if self.instance.pk and self.instance.products.exists():
             self.fields["code"].disabled = True
-            self.fields["code"].help_text = "This code is locked because products already use the unit."
+            self.fields["code"].help_text = _("This code is locked because products already use the unit.")
 
     class Meta:
         model = InventoryUnit
@@ -114,7 +115,7 @@ class UnitInheritanceForm(forms.ModelForm):
     class Meta:
         model = Business
         fields = ["inherit_default_units"]
-        labels = {"inherit_default_units": "Use Prime Ledger default units"}
+        labels = {"inherit_default_units": _("Use Prime Ledger default units")}
 
     def clean_inherit_default_units(self):
         inherit = self.cleaned_data["inherit_default_units"]
@@ -123,7 +124,7 @@ class UnitInheritanceForm(forms.ModelForm):
             unit__business__isnull=True,
         ).exists():
             raise forms.ValidationError(
-                "Reassign products using default units to business-owned units before disabling inheritance."
+                _("Reassign products using default units to business-owned units before disabling inheritance.")
             )
         return inherit
 
@@ -137,8 +138,8 @@ class StockMovementForm(forms.ModelForm):
             business=business, is_active=True, is_service=False
         ).order_by("name")
         self.fields["occurred_at"].initial = timezone.localtime().strftime("%Y-%m-%dT%H:%M")
-        self.fields["reference"].label = "Source reference"
-        self.fields["reference"].help_text = "Optional supplier, adjustment, or source document reference."
+        self.fields["reference"].label = _("Source reference")
+        self.fields["reference"].help_text = _("Optional supplier, adjustment, or source document reference.")
 
     class Meta:
         model = StockMovement

@@ -28,7 +28,7 @@ The first release is single-location per business, BDT-first, Bangladesh timezon
 - Filtered sales/purchase registers and deterministic CSV/PDF exports
 - Tenant-scoped contact, posted invoice, money receipt, and arbitrary date-range account activity reports with CSV/PDF exports
 - Printable sales invoices and money receipts linked to immutable posted records
-- English/Bangla-ready business locale, BDT default currency and Bangladesh timezone
+- Complete English/বাংলা presentation across navigation, forms, validation and status messages, JavaScript controls, CSV exports, and furnished PDF reports, with a saved per-user preference and an embedded Bengali document font
 - PostgreSQL-first runtime configuration through `DATABASE_URL`
 - Clean Architecture boundary packages for domain contracts, application services, and Django ORM repositories
 
@@ -70,6 +70,22 @@ The interface should feel calm, precise, and executive-friendly: dense enough fo
 - Do not use gradients, decorative blobs, excessive rounded controls, animated charts, or a dark-mode-first visual language.
 
 Recommended primary navigation: Overview, Sales, Purchases, Inventory, Customers, Suppliers, Accounting, Reports, and Settings. Hide inaccessible menu items rather than displaying dead ends, while preserving direct-URL authorization on the backend.
+
+### Localization status
+
+Localization is implemented for `en` and `bn` across the complete presentation boundary. The selector appears on sign-in and authenticated screens, keeps the current safe URL, stores an anonymous cookie, and saves an authenticated user's preference in the database so it follows future sessions. All 50 server-rendered templates, Python form/model/API validation and status messages, JavaScript-generated controls, CSV headings, and PDF reports use the active language.
+
+Bangla PDFs embed the bundled Noto Sans Bengali regular and bold fonts under the SIL Open Font License and use ReportLab shaping support. Locale-specific date and datetime formats are applied to screens and exports. Financial amounts and immutable reference numbers intentionally retain Latin digits, `.` decimals, and `,` grouping so documents remain consistent with ledger storage, bank statements, and the eight-digit annual sequence.
+
+Docker installs GNU gettext and compiles both `django` and `djangojs` catalogs while building the image. During local translation work, regenerate and compile catalogs with:
+
+```powershell
+python manage.py makemessages -l bn
+python manage.py makemessages -d djangojs -l bn
+python manage.py compilemessages
+```
+
+Review financial wording with a native Bangla accounting reviewer whenever catalog messages change.
 
 ## Setup
 
@@ -133,7 +149,7 @@ Open `http://127.0.0.1:8000/admin/` for the initial management surface and `http
 - Invoice-level receivable/payable set-off for contacts classified as Customer & Supplier, with multi-document allocation, automatic contra journal/voucher, and a printable statement
 - Dedicated operating-expense workflow for rent, employee salary, utilities, professional fees, and contingent expenditure, with paid-now/pay-later posting, partial payable settlement, expense/payment vouchers, and CSV/PDF registers
 
-Sales and purchase posting is transactional and idempotent. A successful post creates the balanced journal entry, immutable voucher, and applicable stock movements together. An immediately paid sale—identified by selecting a debit account mapped as Cash, Bank, or Mobile Financial Services—also creates one immutable money receipt with the net sale amount. A credit sale posted to Accounts Receivable exposes **Receive payment**: each partial or final collection is allocated to that invoice, debits the selected funds account, credits Accounts Receivable, and creates an immutable receipt voucher and money receipt atomically. A purchase posted to Accounts Payable exposes **Pay supplier**: each allocation debits Accounts Payable, credits the selected Cash, Bank, or Mobile Financial Services account, and creates an immutable printable payment voucher. Overpayments, future dates, locked periods, cross-tenant accounts, and duplicate request-key conflicts are rejected before side effects. Sales may apply one fixed-amount or percentage discount; receivable, revenue, voucher, invoice, receipt, and report totals use the net amount after discount. Product sales debit Cost of Goods Sold and credit Inventory using the moving weighted-average cost of stock on hand, so a commercial discount never changes inventory cost; service lines do not affect stock or COGS. A failed validation—including an excessive discount, insufficient sale stock, missing required posting roles, or a locked period—rolls back every side effect. Draft sales and purchases in open periods can be deleted after explicit confirmation; posted or locked-period documents cannot be deleted, and a deleted draft's automatic number is never reused.
+Sales and purchase posting is transactional and idempotent. Routine entry asks for a business-facing payment arrangement—**Receive later / Pay later**, **Cash**, **Bank**, or **Mobile financial services**—and shows only the matching funds account when one is required. Prime Ledger derives Accounts Receivable, Inventory, Accounts Payable, Sales Revenue, and the debit/credit direction automatically; unrestricted account selection remains in Manual Journal for accountants. A successful post creates the balanced journal entry, immutable voucher, and applicable stock movements together. An immediately paid sale also creates one immutable money receipt with the net sale amount. A credit sale posted to Accounts Receivable exposes **Receive payment**: each partial or final collection is allocated to that invoice, debits the selected funds account, credits Accounts Receivable, and creates an immutable receipt voucher and money receipt atomically. A purchase posted to Accounts Payable exposes **Pay supplier**: each allocation debits Accounts Payable, credits the selected Cash, Bank, or Mobile Financial Services account, and creates an immutable printable payment voucher. Overpayments, future dates, locked periods, cross-tenant accounts, and duplicate request-key conflicts are rejected before side effects. Sales may apply one fixed-amount or percentage discount; receivable, revenue, voucher, invoice, receipt, and report totals use the net amount after discount. Product sales debit Cost of Goods Sold and credit Inventory using the moving weighted-average cost of stock on hand, so a commercial discount never changes inventory cost; service lines do not affect stock or COGS. A failed validation—including an excessive discount, insufficient sale stock, missing required posting roles, or a locked period—rolls back every side effect. Draft sales and purchases in open periods can be deleted after explicit confirmation; posted or locked-period documents cannot be deleted, and a deleted draft's automatic number is never reused.
 
 When the same contact is classified as **Customer & Supplier** and has both open balances, use **Payments → Mutual balances** to allocate one or more sales against one or more purchases. Posting debits Accounts Payable and credits Accounts Receivable by equal amounts, creates an immutable contra voucher and printable statement, and updates both documents without moving cash. Unbalanced or excessive allocations, future dates, locked periods, and cross-tenant documents are rejected atomically.
 
@@ -223,6 +239,6 @@ The authenticated Django interface is the operational delivery surface for the i
 
 Every select list in the authenticated application is progressively enhanced as a searchable autocomplete combobox. It preserves the native select as the submitted field, supports keyboard and pointer operation, and also applies to line-item selectors added dynamically after page load. If JavaScript is unavailable, the original native select remains usable.
 
-Sales and purchases are available at `/sales/` and `/purchases/`. Users can filter registers by state and date, save editable automatically numbered drafts, add split lines, review posting accounts, confirm posting, follow the resulting journal, and export documents or filtered registers as PDF/CSV. The stock movement register also supports number/source search, date and direction filters, and PDF/CSV export.
+Sales and purchases are available at `/sales/` and `/purchases/`. Users can filter registers by state and date, save editable automatically numbered drafts, add split lines, choose a simple settlement method, confirm posting, follow the resulting journal, and export documents or filtered registers as PDF/CSV. Document details lead with the payment arrangement and keep derived debit/credit entries in an expandable accounting section. The stock movement register also supports number/source search, date and direction filters, and PDF/CSV export.
 
 The visual system intentionally uses warm neutral surfaces, charcoal typography, quiet borders, and one restrained teal action color. Financial and stock states use semantic color together with explicit text. Posting and fiscal-period state changes require confirmation, and inaccessible workflows are omitted from navigation while direct URLs remain protected by backend permissions.

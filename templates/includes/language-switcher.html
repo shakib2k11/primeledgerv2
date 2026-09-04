@@ -1,0 +1,20 @@
+{% load i18n %}
+{% get_current_language as CURRENT_LANGUAGE %}
+<div class="language-switcher" role="group" aria-label="{% translate 'Language' %}">
+  <span class="language-label">{% translate "Language" %}</span>
+  <div class="language-options">
+    <form method="post" action="{% url 'set_language' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <input type="hidden" name="language" value="en">
+      <button type="submit" lang="en" class="language-option{% if CURRENT_LANGUAGE == 'en' %} active{% endif %}"{% if CURRENT_LANGUAGE == 'en' %} aria-current="true"{% endif %}>{% translate "English" %}</button>
+    </form>
+    <span aria-hidden="true">/</span>
+    <form method="post" action="{% url 'set_language' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <input type="hidden" name="language" value="bn">
+      <button type="submit" lang="bn" class="language-option{% if CURRENT_LANGUAGE == 'bn' %} active{% endif %}"{% if CURRENT_LANGUAGE == 'bn' %} aria-current="true"{% endif %}>বাংলা</button>
+    </form>
+  </div>
+</div>

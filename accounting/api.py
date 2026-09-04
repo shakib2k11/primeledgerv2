@@ -31,6 +31,7 @@ from core.application.services import (
 )
 from core.infrastructure.repositories import DjangoJournalRepository
 from core.models import Party
+from django.utils.translation import gettext_lazy as _
 
 
 class CleanModelSerializer(serializers.ModelSerializer):
@@ -85,7 +86,7 @@ class JournalLineSerializer(serializers.ModelSerializer):
         debit = attrs.get("debit", 0)
         credit = attrs.get("credit", 0)
         if (debit > 0) == (credit > 0):
-            raise serializers.ValidationError("Provide either a debit or a credit amount.")
+            raise serializers.ValidationError(_("Provide either a debit or a credit amount."))
         return attrs
 
 
@@ -110,12 +111,12 @@ class JournalEntrySerializer(serializers.ModelSerializer):
         period = attrs.get("period", getattr(self.instance, "period", None))
         entry_date = attrs.get("entry_date", getattr(self.instance, "entry_date", None))
         if period and period.is_locked:
-            raise serializers.ValidationError("This fiscal period is locked.")
+            raise serializers.ValidationError(_("This fiscal period is locked."))
         if period and entry_date and not period.starts_on <= entry_date <= period.ends_on:
-            raise serializers.ValidationError("Journal entry date must fall within its fiscal period.")
+            raise serializers.ValidationError(_("Journal entry date must fall within its fiscal period."))
         lines = attrs.get("lines")
         if self.instance is None and (not lines or len(lines) < 2):
-            raise serializers.ValidationError("A journal entry requires at least two lines.")
+            raise serializers.ValidationError(_("A journal entry requires at least two lines."))
         return attrs
 
     @transaction.atomic
@@ -143,9 +144,9 @@ class JournalEntrySerializer(serializers.ModelSerializer):
     @transaction.atomic
     def update(self, instance, validated_data):
         if instance.posted:
-            raise serializers.ValidationError("Posted journal entries cannot be edited.")
+            raise serializers.ValidationError(_("Posted journal entries cannot be edited."))
         if instance.period.is_locked:
-            raise serializers.ValidationError("This fiscal period is locked.")
+            raise serializers.ValidationError(_("This fiscal period is locked."))
         lines = validated_data.pop("lines", None)
         for key, value in validated_data.items():
             setattr(instance, key, value)
@@ -180,7 +181,7 @@ class VoucherSerializer(CleanModelSerializer):
             self.fields["journal_entry"].queryset = JournalEntry.objects.filter(business=business, posted=True)
 
     def update(self, instance, validated_data):
-        raise serializers.ValidationError("Financial vouchers cannot be edited after creation.")
+        raise serializers.ValidationError(_("Financial vouchers cannot be edited after creation."))
 
 
 class AccountingViewSet(TenantViewSetMixin):
@@ -333,12 +334,12 @@ class ExpenseCreateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if attrs["expense_date"] > timezone.localdate():
-            raise serializers.ValidationError("Expense date cannot be in the future.")
+            raise serializers.ValidationError(_("Expense date cannot be in the future."))
         if attrs["settlement"] == ExpenseRecord.Settlement.PAID:
             if not attrs.get("payment_account"):
-                raise serializers.ValidationError("Paid expenses require a payment account.")
+                raise serializers.ValidationError(_("Paid expenses require a payment account."))
         elif not attrs.get("payee"):
-            raise serializers.ValidationError("Pay-later expenses require a payee.")
+            raise serializers.ValidationError(_("Pay-later expenses require a payee."))
         return attrs
 
 

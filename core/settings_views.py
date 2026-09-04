@@ -19,6 +19,7 @@ from accounting.models import (
 )
 from core.forms import BusinessAdminCreationForm, BusinessForm, InventoryUnitForm
 from core.models import Business, InventoryUnit, Membership, Party, Product
+from django.utils.translation import gettext_lazy as _
 
 
 def superuser_required(view):
@@ -68,14 +69,22 @@ def tenant_create(request):
             )
             applied_count = result.created
         request.session["business_id"] = business.pk
-        detail = f" {applied_count} default accounts were installed." if applied_count else ""
-        messages.success(request, f"{business.name} was created.{detail} Assign its first Business Admin next.")
+        if applied_count:
+            message = _(
+                "%(business)s was created. %(count)s default accounts were installed. "
+                "Assign its first Business Admin next."
+            ) % {"business": business.name, "count": applied_count}
+        else:
+            message = _(
+                "%(business)s was created. Assign its first Business Admin next."
+            ) % {"business": business.name}
+        messages.success(request, message)
         return redirect("tenant-detail", pk=business.pk)
     return render(request, "core/settings/tenant-form.html", {
         "form": form,
         "business": None,
-        "title": "Create business",
-        "description": "Create an isolated tenant workspace with its own members and records.",
+        "title": _("Create business"),
+        "description": _("Create an isolated tenant workspace with its own members and records."),
     })
 
 
@@ -85,13 +94,13 @@ def tenant_edit(request, pk):
     form = BusinessForm(request.POST or None, instance=tenant)
     if request.method == "POST" and form.is_valid():
         form.save()
-        messages.success(request, "Business settings updated.")
+        messages.success(request, _("Business settings updated."))
         return redirect("tenant-detail", pk=tenant.pk)
     return render(request, "core/settings/tenant-form.html", {
         "form": form,
         "business": tenant,
-        "title": f"Edit {tenant.name}",
-        "description": "Update identity, locale, currency, or operational status.",
+        "title": _("Edit %(business)s") % {"business": tenant.name},
+        "description": _("Update identity, locale, currency, or operational status."),
     })
 
 
@@ -139,7 +148,11 @@ def tenant_admin_create(request, pk):
         )
         membership.full_clean()
         membership.save()
-        messages.success(request, f"{user.username} can now administer {tenant.name}.")
+        messages.success(
+            request,
+            _("%(username)s can now administer %(business)s.")
+            % {"username": user.username, "business": tenant.name},
+        )
         return redirect("tenant-detail", pk=tenant.pk)
     return render(request, "core/settings/admin-form.html", {
         "business": tenant, "tenant": tenant, "form": form
@@ -163,13 +176,13 @@ def default_unit_create(request):
         unit.business = None
         unit.full_clean()
         unit.save()
-        messages.success(request, "Default inventory unit created.")
+        messages.success(request, _("Default inventory unit created."))
         return redirect("default-unit-list")
     return render(request, "core/unit-form.html", {
         "business": None,
         "form": form,
-        "title": "Add default unit",
-        "description": "Make this unit available to businesses that inherit Prime Ledger defaults.",
+        "title": _("Add default unit"),
+        "description": _("Make this unit available to businesses that inherit Prime Ledger defaults."),
         "cancel_url": "default-unit-list",
     })
 
@@ -180,13 +193,13 @@ def default_unit_edit(request, pk):
     form = InventoryUnitForm(request.POST or None, instance=unit, business=None)
     if request.method == "POST" and form.is_valid():
         form.save()
-        messages.success(request, "Default inventory unit updated.")
+        messages.success(request, _("Default inventory unit updated."))
         return redirect("default-unit-list")
     return render(request, "core/unit-form.html", {
         "business": None,
         "form": form,
-        "title": f"Edit {unit.name}",
-        "description": "Changes affect every business that inherits default units.",
+        "title": _("Edit %(unit)s") % {"unit": unit.name},
+        "description": _("Changes affect every business that inherits default units."),
         "cancel_url": "default-unit-list",
     })
 
@@ -224,7 +237,7 @@ def _account_template_form(request, template=None):
                     pk=template.pk
                 ).update(is_default=False)
             template.save()
-        messages.success(request, "Account template saved.")
+        messages.success(request, _("Account template saved."))
         return redirect("account-template-detail", pk=template.pk)
     return render(request, "core/settings/account-template-form.html", {
         "business": None,
@@ -258,7 +271,7 @@ def _account_template_line_form(request, template, line=None):
         line.template = template
         line.full_clean()
         line.save()
-        messages.success(request, "Template account saved.")
+        messages.success(request, _("Template account saved."))
         return redirect("account-template-detail", pk=template.pk)
     return render(request, "core/settings/account-template-line-form.html", {
         "business": None,

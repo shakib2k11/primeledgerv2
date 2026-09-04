@@ -12,6 +12,7 @@ from django.db.models import DecimalField, ExpressionWrapper, F, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.formats import date_format
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
@@ -25,6 +26,7 @@ from .pdf import (
     draw_report_header,
     draw_table_header,
     draw_table_row_background,
+    pdf_font,
 )
 from .forms import InventoryUnitForm, PartyForm, ProductForm, StockMovementForm, UnitInheritanceForm
 from .application.services import (
@@ -42,6 +44,7 @@ from .application.services import (
 from .infrastructure.repositories import DjangoBusinessReader
 from .infrastructure.numbering import allocate_reference_number
 from .models import InventoryUnit, Party, Product, StockMovement
+from django.utils.translation import gettext as _
 
 
 business_reader = DjangoBusinessReader()
@@ -183,9 +186,9 @@ def party_create(request):
         party = form.save(commit=False)
         party.business = business
         party.save()
-        messages.success(request, "Contact saved successfully.")
+        messages.success(request, _("Contact saved successfully."))
         return redirect("party-list")
-    return render(request, "core/party-form.html", {"business": business, "form": form, "title": "Add contact"})
+    return render(request, "core/party-form.html", {"business": business, "form": form, "title": _("Add contact")})
 
 
 @login_required
@@ -230,9 +233,9 @@ def product_create(request):
         product.business = business
         product.full_clean()
         product.save()
-        messages.success(request, "Inventory item saved successfully.")
+        messages.success(request, _("Inventory item saved successfully."))
         return redirect("product-list")
-    return render(request, "core/product-form.html", {"business": business, "form": form, "title": "Add inventory item"})
+    return render(request, "core/product-form.html", {"business": business, "form": form, "title": _("Add inventory item")})
 
 
 @login_required
@@ -248,12 +251,12 @@ def product_edit(request, pk):
         product.business = business
         product.full_clean()
         product.save()
-        messages.success(request, "Inventory item updated successfully.")
+        messages.success(request, _("Inventory item updated successfully."))
         return redirect("product-list")
     return render(request, "core/product-form.html", {
         "business": business,
         "form": form,
-        "title": f"Edit {product.name}",
+        "title": _("Edit %(product)s") % {"product": product.name},
     })
 
 
@@ -284,7 +287,7 @@ def unit_inheritance_update(request):
     form = UnitInheritanceForm(request.POST, instance=business)
     if form.is_valid():
         form.save()
-        messages.success(request, "Default unit availability updated.")
+        messages.success(request, _("Default unit availability updated."))
     else:
         business_units = InventoryUnit.objects.filter(business=business).order_by("name")
         default_units = InventoryUnit.objects.filter(
@@ -311,13 +314,13 @@ def unit_create(request):
         unit.business = business
         unit.full_clean()
         unit.save()
-        messages.success(request, "Business inventory unit created.")
+        messages.success(request, _("Business inventory unit created."))
         return redirect("unit-list")
     return render(request, "core/unit-form.html", {
         "business": business,
         "form": form,
-        "title": "Add business unit",
-        "description": "Create a unit available only inside this business.",
+        "title": _("Add business unit"),
+        "description": _("Create a unit available only inside this business."),
         "cancel_url": "unit-list",
     })
 
@@ -332,13 +335,13 @@ def unit_edit(request, pk):
     form = InventoryUnitForm(request.POST or None, instance=unit, business=business)
     if request.method == "POST" and form.is_valid():
         form.save()
-        messages.success(request, "Business inventory unit updated.")
+        messages.success(request, _("Business inventory unit updated."))
         return redirect("unit-list")
     return render(request, "core/unit-form.html", {
         "business": business,
         "form": form,
-        "title": f"Edit {unit.name}",
-        "description": "Update this business-owned unit or mark it inactive.",
+        "title": _("Edit %(unit)s") % {"unit": unit.name},
+        "description": _("Update this business-owned unit or mark it inactive."),
         "cancel_url": "unit-list",
     })
 
@@ -390,23 +393,23 @@ def stock_movement_csv(request):
     if business is None:
         return render(request, "core/no-business.html")
     authorize(request.user, business, INVENTORY_VIEW)
-    movements, _ = filtered_stock_movements(request, business)
+    movements, _filters = filtered_stock_movements(request, business)
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="stock-movement-register.csv"'
     writer = csv.writer(response)
-    writer.writerow(["Business", business.name])
-    writer.writerow(["Report", "Stock movement register"])
-    writer.writerow(["Currency", business.currency])
-    writer.writerow(["Generated", timezone.localdate().strftime("%d-%b-%Y")])
+    writer.writerow([_("Business"), business.name])
+    writer.writerow([_("Report"), _("Stock movement register")])
+    writer.writerow([_("Currency"), business.currency])
+    writer.writerow([_("Generated"), date_format(timezone.localdate(), "SHORT_DATE_FORMAT")])
     writer.writerow([])
     writer.writerow([
-        "Number", "Date and time", "Item", "Direction", "Quantity", "Unit",
-        f"Unit cost ({business.currency})", "Source reference",
+        _("Number"), _("Date and time"), _("Item"), _("Direction"), _("Quantity"), _("Unit"),
+        f"Unit cost ({business.currency})", _("Source reference"),
     ])
     for movement in movements:
         writer.writerow([
             movement.number,
-            timezone.localtime(movement.occurred_at).strftime("%d-%b-%Y %H:%M"),
+            date_format(timezone.localtime(movement.occurred_at), "SHORT_DATETIME_FORMAT"),
             movement.product.name,
             movement.get_direction_display(),
             movement.quantity,
@@ -415,7 +418,7 @@ def stock_movement_csv(request):
             movement.reference,
         ])
     if not movements.exists():
-        writer.writerow(["No records for the selected filters."])
+        writer.writerow([_("No records for the selected filters.")])
     return response
 
 
@@ -425,11 +428,11 @@ def stock_movement_pdf(request):
     if business is None:
         return render(request, "core/no-business.html")
     authorize(request.user, business, INVENTORY_VIEW)
-    movements, _ = filtered_stock_movements(request, business)
+    movements, _filters = filtered_stock_movements(request, business)
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
     width, height = A4
-    pdf.setTitle(f"{business.name} stock movement register")
+    pdf.setTitle(_("%(business)s stock movement register") % {"business": business.name})
     pdf.setAuthor("Prime Ledger")
     rows = list(movements)
     page_number = 1
@@ -438,11 +441,11 @@ def stock_movement_pdf(request):
         return draw_report_header(
             pdf,
             business,
-            "Stock movement register",
+            _("Stock movement register"),
             page_number=page_number,
             metadata=(
-                ("Currency", business.currency),
-                ("Record basis", "Append-only movements"),
+                (_("Currency"), business.currency),
+                (_("Record basis"), _("Append-only movements")),
             ),
         )
 
@@ -456,7 +459,7 @@ def stock_movement_pdf(request):
                 (185, "Item", "left"),
                 (350, "Direction", "left"),
                 (455, "Quantity", "right"),
-                (width - PAGE_MARGIN, f"Unit cost ({business.currency})", "right"),
+                (width - PAGE_MARGIN, _("Unit cost (%(currency)s)") % {"currency": business.currency}, "right"),
             ),
             width=width,
         )
@@ -467,7 +470,7 @@ def stock_movement_pdf(request):
         y = draw_empty_state(
             pdf,
             y,
-            "No stock movements match the selected filters",
+            _("No stock movements match the selected filters"),
             width=width,
         )
     for row_index, movement in enumerate(rows):
@@ -475,20 +478,20 @@ def stock_movement_pdf(request):
             draw_page_footer(pdf, width=width, page_number=page_number)
             pdf.showPage()
             page_number += 1
-            _, _, y = header()
+            _width, _height, y = header()
             y = columns(y)
         draw_table_row_background(pdf, y, width=width, row_index=row_index)
         pdf.setFillColor(INK)
-        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.setFont(pdf_font(bold=True), 7.7)
         pdf.drawString(PAGE_MARGIN, y, movement.number)
         pdf.setFillColor(INK_SOFT)
-        pdf.setFont("Helvetica", 7.5)
-        pdf.drawString(112, y, timezone.localtime(movement.occurred_at).strftime("%d %b %Y"))
+        pdf.setFont(pdf_font(), 7.5)
+        pdf.drawString(112, y, date_format(timezone.localtime(movement.occurred_at), "DATE_FORMAT"))
         pdf.drawString(185, y, clean_text(movement.product.name, 26))
-        pdf.drawString(350, y, movement.get_direction_display())
+        pdf.drawString(350, y, str(movement.get_direction_display()))
         pdf.drawRightString(455, y, f"{movement.quantity:.3f} {movement.product.unit.symbol}")
         pdf.setFillColor(INK)
-        pdf.setFont("Helvetica-Bold", 7.7)
+        pdf.setFont(pdf_font(bold=True), 7.7)
         pdf.drawRightString(width - PAGE_MARGIN, y, f"{movement.unit_cost:.2f}")
         y -= 20
     draw_page_footer(pdf, width=width, page_number=page_number)
@@ -516,7 +519,7 @@ def stock_movement_create(request):
         )
         movement.full_clean()
         movement.save()
-        messages.success(request, "Stock movement recorded successfully.")
+        messages.success(request, _("Stock movement recorded successfully."))
         return redirect("stock-movement-list")
     return render(
         request,
@@ -524,10 +527,10 @@ def stock_movement_create(request):
         {
             "business": business,
             "form": form,
-            "title": "Record stock movement",
-            "eyebrow": "Inventory control",
-            "description": "Record an append-only inflow or outflow. Its eight-digit number is assigned automatically.",
+            "title": _("Record stock movement"),
+            "eyebrow": _("Inventory control"),
+            "description": _("Record an append-only inflow or outflow. Its eight-digit number is assigned automatically."),
             "cancel_url": "stock-movement-list",
-            "submit_label": "Record movement",
+            "submit_label": _("Record movement"),
         },
     )

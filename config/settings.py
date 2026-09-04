@@ -25,9 +25,11 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     *([] if "test" in sys.argv else ["whitenoise.middleware.WhiteNoiseMiddleware"]),
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "core.localization.UserLanguagePreferenceMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
 ]
 ROOT_URLCONF = "config.urls"
@@ -53,7 +55,13 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://primeledger:primeledger@l
 DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)}
 
 AUTH_PASSWORD_VALIDATORS = []
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "en"
+LANGUAGES = [
+    ("en", "English"),
+    ("bn", "বাংলা"),
+]
+LOCALE_PATHS = [BASE_DIR / "locale"]
+FORMAT_MODULE_PATH = ["config.formats"]
 TIME_ZONE = "Asia/Dhaka"
 USE_I18N = True
 USE_TZ = True

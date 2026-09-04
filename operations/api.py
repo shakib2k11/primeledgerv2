@@ -44,6 +44,7 @@ from operations.models import (
     TradeDocument,
     TradeLine,
 )
+from django.utils.translation import gettext_lazy as _
 
 
 class TradeLineSerializer(serializers.ModelSerializer):
@@ -111,7 +112,7 @@ class PaymentAllocationInputSerializer(serializers.Serializer):
 
     def validate_payment_date(self, value):
         if value > timezone.localdate():
-            raise serializers.ValidationError("Payment date cannot be in the future.")
+            raise serializers.ValidationError(_("Payment date cannot be in the future."))
         return value
 
 
@@ -194,7 +195,7 @@ class BalanceSetoffCreateSerializer(serializers.Serializer):
 
     def validate_setoff_date(self, value):
         if value > timezone.localdate():
-            raise serializers.ValidationError("Set-off date cannot be in the future.")
+            raise serializers.ValidationError(_("Set-off date cannot be in the future."))
         return value
 
     def validate(self, attrs):
@@ -202,17 +203,17 @@ class BalanceSetoffCreateSerializer(serializers.Serializer):
         purchases = attrs.get("purchase_allocations", [])
         if not sales or not purchases:
             raise serializers.ValidationError(
-                "Allocate at least one receivable invoice and one payable purchase."
+                _("Allocate at least one receivable invoice and one payable purchase.")
             )
         if len({item["document_id"] for item in sales}) != len(sales) or len(
             {item["document_id"] for item in purchases}
         ) != len(purchases):
-            raise serializers.ValidationError("Each document may be allocated only once.")
+            raise serializers.ValidationError(_("Each document may be allocated only once."))
         sale_total = sum((item["amount"] for item in sales), Decimal("0.00"))
         purchase_total = sum((item["amount"] for item in purchases), Decimal("0.00"))
         if sale_total != purchase_total:
             raise serializers.ValidationError(
-                "Receivable and payable allocation totals must be equal."
+                _("Receivable and payable allocation totals must be equal.")
             )
         return attrs
 
@@ -258,10 +259,10 @@ class TradeDocumentSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if self.instance and self.instance.status == TradeDocument.Status.POSTED:
-            raise serializers.ValidationError("Posted documents cannot be edited.")
+            raise serializers.ValidationError(_("Posted documents cannot be edited."))
         lines = attrs.get("lines")
         if self.instance is None and not lines:
-            raise serializers.ValidationError("Add at least one product or service line.")
+            raise serializers.ValidationError(_("Add at least one product or service line."))
         return attrs
 
     def get_money_receipt_number(self, instance):
@@ -334,7 +335,7 @@ class TradeDocumentSerializer(serializers.ModelSerializer):
 
     def _replace_lines(self, document, lines):
         if not lines:
-            raise serializers.ValidationError("Add at least one product or service line.")
+            raise serializers.ValidationError(_("Add at least one product or service line."))
         for values in lines:
             line = TradeLine(document=document, **values)
             try:

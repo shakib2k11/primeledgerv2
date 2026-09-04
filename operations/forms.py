@@ -6,11 +6,19 @@ from django.forms import BaseInlineFormSet, inlineformset_factory
 from django.utils import timezone
 
 from accounting.models import Account, FiscalPeriod
+from accounting.form_fields import OperationalAccountChoiceField
 from core.models import Party, Product
+from operations.domain.settlement import SettlementMethod, posting_account_plan
 from operations.models import TradeDocument, TradeLine
+from django.utils.translation import gettext_lazy as _
 
 
 class TradeDocumentForm(forms.ModelForm):
+    settlement_method = forms.ChoiceField()
+    funds_account = OperationalAccountChoiceField(
+        queryset=Account.objects.none(), required=False
+    )
+
     def __init__(self, *args, business=None, kind=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.business = business
@@ -29,39 +37,98 @@ class TradeDocumentForm(forms.ModelForm):
             business=business, is_locked=False
         ).order_by("starts_on")
         accounts = Account.objects.filter(business=business, is_active=True).order_by("code")
-        self.fields["debit_account"].queryset = accounts
-        self.fields["credit_account"].queryset = accounts
+        self.fields["funds_account"].queryset = accounts.filter(
+            system_role__in=SettlementMethod.LIQUID
+        )
+        deferred_label = _("Receive later") if kind == TradeDocument.Kind.SALE else _("Pay later")
+        self.fields["settlement_method"].choices = [
+            (SettlementMethod.DEFERRED, deferred_label),
+            (SettlementMethod.CASH, _("Cash")),
+            (SettlementMethod.BANK, _("Bank")),
+            (SettlementMethod.MOBILE_MONEY, _("Mobile financial services")),
+        ]
+        self.fields["settlement_method"].label = (
+            _("Customer payment") if kind == TradeDocument.Kind.SALE else _("Supplier payment")
+        )
+        self.fields["settlement_method"].help_text = (
+            _("Choose Receive later for an Accounts Receivable sale.")
+            if kind == TradeDocument.Kind.SALE
+            else _("Choose Pay later for an Accounts Payable purchase.")
+        )
+        self.fields["funds_account"].label = (
+            _("Deposit into") if kind == TradeDocument.Kind.SALE else _("Pay from")
+        )
+        self.fields["funds_account"].help_text = _(
+            "Shown only for cash, bank, or mobile settlement."
+        )
         self.fields["document_date"].initial = timezone.localdate()
-        if not self.instance.pk:
-            initial_roles = (
-                (Account.SystemRole.ACCOUNTS_RECEIVABLE, Account.SystemRole.SALES_REVENUE)
+        if self.instance.pk:
+            operational_account = (
+                self.instance.debit_account
                 if kind == TradeDocument.Kind.SALE
-                else (Account.SystemRole.INVENTORY, Account.SystemRole.ACCOUNTS_PAYABLE)
+                else self.instance.credit_account
             )
-            role_accounts = {
-                account.system_role: account.pk
-                for account in accounts.filter(system_role__in=initial_roles)
-            }
-            self.fields["debit_account"].initial = role_accounts.get(initial_roles[0])
-            self.fields["credit_account"].initial = role_accounts.get(initial_roles[1])
-        if kind == TradeDocument.Kind.SALE:
-            self.fields["debit_account"].help_text = (
-                "Use Accounts Receivable for credit sales. Selecting an account mapped "
-                "as Cash, Bank, or Mobile Financial Services generates a money receipt when posted."
+            method = (
+                SettlementMethod.DEFERRED
+                if operational_account.system_role
+                in {Account.SystemRole.ACCOUNTS_RECEIVABLE, Account.SystemRole.ACCOUNTS_PAYABLE}
+                else operational_account.system_role
             )
-            self.fields["credit_account"].help_text = "Usually Sales Revenue."
-            self.fields["discount_type"].required = False
-            self.fields["discount_type"].help_text = "Apply one discount to the complete sale."
-            self.fields["discount_value"].required = False
-            self.fields["discount_value"].help_text = "Enter a currency amount or percentage according to the selected type."
+            self.fields["settlement_method"].initial = method
+            if method in SettlementMethod.LIQUID:
+                self.fields["funds_account"].initial = operational_account.pk
         else:
-            self.fields["debit_account"].help_text = "Usually Inventory or Purchases."
-            self.fields["credit_account"].help_text = "Usually Accounts Payable or Cash."
+            self.fields["settlement_method"].initial = SettlementMethod.DEFERRED
+        if kind == TradeDocument.Kind.SALE:
+            self.fields["discount_type"].required = False
+            self.fields["discount_type"].help_text = _("Apply one discount to the complete sale.")
+            self.fields["discount_value"].required = False
+            self.fields["discount_value"].help_text = _("Enter a currency amount or percentage according to the selected type.")
+        else:
             self.fields.pop("discount_type")
             self.fields.pop("discount_value")
 
     def clean(self):
         cleaned = super().clean()
+        method = cleaned.get("settlement_method")
+        funds_account = cleaned.get("funds_account")
+        if method:
+            plan = posting_account_plan(self.kind, method)
+            if plan.funds_side:
+                if not funds_account:
+                    self.add_error("funds_account", _("Select the cash, bank, or mobile account."))
+                elif funds_account.system_role != method:
+                    self.add_error(
+                        "funds_account",
+                        _("The selected account does not match the payment method."),
+                    )
+            else:
+                cleaned["funds_account"] = None
+
+            role_accounts = {
+                account.system_role: account
+                for account in Account.objects.filter(
+                    business=self.business,
+                    is_active=True,
+                    system_role__in={plan.debit_role, plan.credit_role},
+                )
+            }
+            missing_roles = [
+                role for role in {plan.debit_role, plan.credit_role}
+                if role not in role_accounts and role != method
+            ]
+            if missing_roles:
+                self.add_error(
+                    None,
+                    _("The chart of accounts is missing a required system account. Apply the default chart template or ask an administrator."),
+                )
+            if not self.errors:
+                self.instance.debit_account = (
+                    funds_account if plan.funds_side == "debit" else role_accounts[plan.debit_role]
+                )
+                self.instance.credit_account = (
+                    funds_account if plan.funds_side == "credit" else role_accounts[plan.credit_role]
+                )
         if self.kind == TradeDocument.Kind.SALE:
             discount_type = cleaned.get("discount_type") or TradeDocument.DiscountType.NONE
             discount_value = cleaned.get("discount_value") or Decimal("0.00")
@@ -75,14 +142,17 @@ class TradeDocumentForm(forms.ModelForm):
                 discount_type == TradeDocument.DiscountType.PERCENTAGE
                 and discount_value >= Decimal("100")
             ):
-                self.add_error("discount_value", "Percentage discount must be less than 100.")
+                self.add_error(
+                    "discount_value",
+                    _("Percentage discount must be less than 100."),
+                )
         return cleaned
 
     class Meta:
         model = TradeDocument
         fields = [
-            "document_date", "party", "period", "debit_account",
-            "credit_account", "discount_type", "discount_value", "notes",
+            "document_date", "party", "period", "settlement_method",
+            "funds_account", "discount_type", "discount_value", "notes",
         ]
         widgets = {
             "document_date": forms.DateInput(attrs={"type": "date"}),
@@ -109,7 +179,7 @@ class BaseTradeLineFormSet(BaseInlineFormSet):
             return
         active = [form for form in self.forms if form.cleaned_data and not form.cleaned_data.get("DELETE")]
         if not active:
-            raise forms.ValidationError("Add at least one product or service line.")
+            raise forms.ValidationError(_("Add at least one product or service line."))
         total = sum(
             (
                 (form.cleaned_data.get("quantity") or Decimal("0"))
@@ -119,7 +189,7 @@ class BaseTradeLineFormSet(BaseInlineFormSet):
             Decimal("0"),
         )
         if total <= 0:
-            raise forms.ValidationError("The document total must be greater than zero.")
+            raise forms.ValidationError(_("The document total must be greater than zero."))
 
 
 TradeLineFormSet = inlineformset_factory(
@@ -139,7 +209,7 @@ class ReceiveSalePaymentForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}),
         initial=timezone.localdate,
     )
-    payment_account = forms.ModelChoiceField(queryset=Account.objects.none())
+    payment_account = OperationalAccountChoiceField(queryset=Account.objects.none())
     amount = forms.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -151,7 +221,7 @@ class ReceiveSalePaymentForm(forms.Form):
     )
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
     confirm = forms.BooleanField(
-        label="I confirm that this payment has been received and should be posted.",
+        label=_("I confirm that this payment has been received and should be posted."),
     )
 
     def __init__(self, *args, business=None, sale=None, **kwargs):
@@ -170,24 +240,25 @@ class ReceiveSalePaymentForm(forms.Form):
         if not self.is_bound:
             self.initial.setdefault("amount", sale.balance_due)
             self.initial.setdefault("idempotency_key", uuid.uuid4())
-        self.fields["amount"].help_text = (
-            f"Outstanding balance: {sale.balance_due:.2f} {business.currency}."
-        )
-        self.fields["payment_account"].help_text = (
+        self.fields["amount"].help_text = _(
+            "Outstanding balance: %(balance).2f %(currency)s."
+        ) % {"balance": sale.balance_due, "currency": business.currency}
+        self.fields["payment_account"].help_text = _(
             "The selected Cash, Bank, or Mobile Financial Services account will be debited."
         )
 
     def clean_payment_date(self):
         payment_date = self.cleaned_data["payment_date"]
         if payment_date > timezone.localdate():
-            raise forms.ValidationError("Payment date cannot be in the future.")
+            raise forms.ValidationError(_("Payment date cannot be in the future."))
         return payment_date
 
     def clean_amount(self):
         amount = self.cleaned_data["amount"]
         if amount > self.sale.balance_due:
             raise forms.ValidationError(
-                f"Payment cannot exceed the remaining balance of {self.sale.balance_due:.2f}."
+                _("Payment cannot exceed the remaining balance of %(balance).2f.")
+                % {"balance": self.sale.balance_due}
             )
         return amount
 
@@ -197,7 +268,7 @@ class PayPurchaseForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}),
         initial=timezone.localdate,
     )
-    payment_account = forms.ModelChoiceField(queryset=Account.objects.none())
+    payment_account = OperationalAccountChoiceField(queryset=Account.objects.none())
     amount = forms.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -209,7 +280,7 @@ class PayPurchaseForm(forms.Form):
     )
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
     confirm = forms.BooleanField(
-        label="I confirm that this supplier payment should be posted.",
+        label=_("I confirm that this supplier payment should be posted."),
     )
 
     def __init__(self, *args, business=None, purchase=None, **kwargs):
@@ -228,24 +299,25 @@ class PayPurchaseForm(forms.Form):
         if not self.is_bound:
             self.initial.setdefault("amount", purchase.balance_due)
             self.initial.setdefault("idempotency_key", uuid.uuid4())
-        self.fields["amount"].help_text = (
-            f"Outstanding payable: {purchase.balance_due:.2f} {business.currency}."
-        )
-        self.fields["payment_account"].help_text = (
+        self.fields["amount"].help_text = _(
+            "Outstanding payable: %(balance).2f %(currency)s."
+        ) % {"balance": purchase.balance_due, "currency": business.currency}
+        self.fields["payment_account"].help_text = _(
             "The selected Cash, Bank, or Mobile Financial Services account will be credited."
         )
 
     def clean_payment_date(self):
         payment_date = self.cleaned_data["payment_date"]
         if payment_date > timezone.localdate():
-            raise forms.ValidationError("Payment date cannot be in the future.")
+            raise forms.ValidationError(_("Payment date cannot be in the future."))
         return payment_date
 
     def clean_amount(self):
         amount = self.cleaned_data["amount"]
         if amount > self.purchase.balance_due:
             raise forms.ValidationError(
-                f"Payment cannot exceed the remaining balance of {self.purchase.balance_due:.2f}."
+                _("Payment cannot exceed the remaining balance of %(balance).2f.")
+                % {"balance": self.purchase.balance_due}
             )
         return amount
 
@@ -261,7 +333,7 @@ class BalanceSetoffForm(forms.Form):
     )
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
     confirm = forms.BooleanField(
-        label="I confirm these receivable and payable allocations should be posted.",
+        label=_("I confirm these receivable and payable allocations should be posted."),
     )
 
     def __init__(self, *args, sales=(), purchases=(), **kwargs):
@@ -307,7 +379,7 @@ class BalanceSetoffForm(forms.Form):
     def clean_setoff_date(self):
         setoff_date = self.cleaned_data["setoff_date"]
         if setoff_date > timezone.localdate():
-            raise forms.ValidationError("Set-off date cannot be in the future.")
+            raise forms.ValidationError(_("Set-off date cannot be in the future."))
         return setoff_date
 
     def clean(self):
@@ -329,11 +401,11 @@ class BalanceSetoffForm(forms.Form):
         )
         if not sale_allocations or not purchase_allocations:
             raise forms.ValidationError(
-                "Allocate at least one receivable invoice and one payable purchase."
+                _("Allocate at least one receivable invoice and one payable purchase.")
             )
         if sale_total != purchase_total:
             raise forms.ValidationError(
-                "Receivable and payable allocation totals must be equal."
+                _("Receivable and payable allocation totals must be equal.")
             )
         cleaned["sale_allocations"] = sale_allocations
         cleaned["purchase_allocations"] = purchase_allocations

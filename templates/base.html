@@ -1,68 +1,75 @@
-{% load static %}
+{% load static i18n %}
+{% get_current_language as LANGUAGE_CODE %}
+{% translate "No business assigned" as no_business_assigned %}
 <!doctype html>
-<html lang="en">
+<html lang="{{ LANGUAGE_CODE }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1f2b29">
-  <title>{% block title %}Prime Ledger{% endblock %}</title>
+  <title>{% block title %}{% translate "Prime Ledger" %}{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'app.css' %}">
+  <script src="{% url 'javascript-catalog' %}"></script>
   <script src="{% static 'app.js' %}" defer></script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
 {% block layout %}
   <input class="nav-toggle" type="checkbox" id="nav-toggle" aria-hidden="true">
   <div class="app-shell">
-    <aside class="sidebar" aria-label="Primary navigation">
+    <aside class="sidebar" aria-label="{% translate 'Primary navigation' %}">
       <div class="sidebar-head">
-        <a class="brand" href="{% url 'dashboard' %}" aria-label="Prime Ledger overview">
-          <span class="brand-mark">PL</span>
-          <span><strong>Prime Ledger</strong><small>Business operations</small></span>
+        <a class="brand" href="{% url 'dashboard' %}" aria-label="{% translate 'Prime Ledger overview' %}">
+          <span class="brand-mark">{% translate "PL" %}</span>
+          <span><strong>{% translate "Prime Ledger" %}</strong><small>{% translate "Business operations" %}</small></span>
         </a>
-        <label class="nav-close" for="nav-toggle" aria-label="Close navigation">×</label>
+        <label class="nav-close" for="nav-toggle" aria-label="{% translate 'Close navigation' %}">{% translate "&times;" %}</label>
       </div>
       <nav class="nav-list">
-        <span class="nav-label">Workspace</span>
-        <a href="{% url 'dashboard' %}" class="nav-item {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/></svg><span>Overview</span></a>
-        {% if can_view_sales %}<a href="{% url 'sale-list' %}" class="nav-item {% if 'sale-' in request.resolver_match.url_name and request.resolver_match.url_name != 'sale-receive-payment' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h14l-2 8H9L7 4ZM5 2H2v2h2l3 11h11v-2H8.5l-.3-1H20l3-10H6.5L6 0H5v2Zm4 15a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm9 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg><span>Sales</span></a>{% endif %}
-        {% if can_view_purchases %}<a href="{% url 'purchase-list' %}" class="nav-item {% if 'purchase-' in request.resolver_match.url_name and request.resolver_match.url_name != 'purchase-pay-supplier' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v3H4V4Zm1 5h14v11H5V9Zm4 3v2h6v-2H9Z"/></svg><span>Purchases</span></a>{% endif %}
-        {% if can_view_sales or can_view_purchases %}<a href="{% url 'payment-center' %}" class="nav-item {% if request.resolver_match.url_name == 'payment-center' or request.resolver_match.url_name == 'sale-receive-payment' or request.resolver_match.url_name == 'purchase-pay-supplier' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6a3 3 0 0 1 3-3h13v3H6a1 1 0 0 0 0 2h15v12H6a3 3 0 0 1-3-3V6Zm14 6a2 2 0 1 0 0 4h2v-4h-2Z"/></svg><span>Payments</span></a>{% endif %}
+        <span class="nav-label">{% translate "Workspace" %}</span>
+        <a href="{% url 'dashboard' %}" class="nav-item {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/></svg><span>{% translate "Overview" %}</span></a>
+        {% if can_view_sales %}<a href="{% url 'sale-list' %}" class="nav-item {% if 'sale-' in request.resolver_match.url_name and request.resolver_match.url_name != 'sale-receive-payment' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h14l-2 8H9L7 4ZM5 2H2v2h2l3 11h11v-2H8.5l-.3-1H20l3-10H6.5L6 0H5v2Zm4 15a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm9 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg><span>{% translate "Sales" %}</span></a>{% endif %}
+        {% if can_view_purchases %}<a href="{% url 'purchase-list' %}" class="nav-item {% if 'purchase-' in request.resolver_match.url_name and request.resolver_match.url_name != 'purchase-pay-supplier' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v3H4V4Zm1 5h14v11H5V9Zm4 3v2h6v-2H9Z"/></svg><span>{% translate "Purchases" %}</span></a>{% endif %}
+        {% if can_view_sales or can_view_purchases %}<a href="{% url 'payment-center' %}" class="nav-item {% if request.resolver_match.url_name == 'payment-center' or request.resolver_match.url_name == 'sale-receive-payment' or request.resolver_match.url_name == 'purchase-pay-supplier' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6a3 3 0 0 1 3-3h13v3H6a1 1 0 0 0 0 2h15v12H6a3 3 0 0 1-3-3V6Zm14 6a2 2 0 1 0 0 4h2v-4h-2Z"/></svg><span>{% translate "Payments" %}</span></a>{% endif %}
         {% if can_view_inventory %}
-        <a href="{% url 'product-list' %}" class="nav-item {% if 'product' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4-8 4-8-4 8-4Zm-8 8 8 4 8-4v6l-8 4-8-4v-6Z"/></svg><span>Catalog</span></a>
-        <a href="{% url 'stock-movement-list' %}" class="nav-item {% if 'stock-movement' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h11l-3-3 1.4-1.4L21.8 8l-5.4 5.4L15 12l3-3H7V7Zm10 10H6l3 3-1.4 1.4L2.2 16l5.4-5.4L9 12l-3 3h11v2Z"/></svg><span>Stock movement</span></a>
-        <a href="{% url 'unit-list' %}" class="nav-item {% if 'unit-' in request.resolver_match.url_name and 'default-unit' not in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5Zm3 3v3h2V8H6Zm4 0v5h2V8h-2Zm4 0v3h2V8h-2Zm4 0v5h1V8h-1Z"/></svg><span>Inventory units</span></a>
+        <a href="{% url 'product-list' %}" class="nav-item {% if 'product' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4-8 4-8-4 8-4Zm-8 8 8 4 8-4v6l-8 4-8-4v-6Z"/></svg><span>{% translate "Catalog" %}</span></a>
+        <a href="{% url 'stock-movement-list' %}" class="nav-item {% if 'stock-movement' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h11l-3-3 1.4-1.4L21.8 8l-5.4 5.4L15 12l3-3H7V7Zm10 10H6l3 3-1.4 1.4L2.2 16l5.4-5.4L9 12l-3 3h11v2Z"/></svg><span>{% translate "Stock movement" %}</span></a>
+        <a href="{% url 'unit-list' %}" class="nav-item {% if 'unit-' in request.resolver_match.url_name and 'default-unit' not in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5Zm3 3v3h2V8H6Zm4 0v5h2V8h-2Zm4 0v3h2V8h-2Zm4 0v5h1V8h-1Z"/></svg><span>{% translate "Inventory units" %}</span></a>
         {% endif %}
         {% if can_view_contacts %}
-        <a href="{% url 'party-list' %}" class="nav-item {% if 'party' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3ZM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3Zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13Zm8 0c-.3 0-.7 0-1.1.1 1.3.9 2.1 2 2.1 3.4V19h6v-2.5c0-2.3-4.7-3.5-7-3.5Z"/></svg><span>Contacts</span></a>
+        <a href="{% url 'party-list' %}" class="nav-item {% if 'party' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3ZM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3Zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13Zm8 0c-.3 0-.7 0-1.1.1 1.3.9 2.1 2 2.1 3.4V19h6v-2.5c0-2.3-4.7-3.5-7-3.5Z"/></svg><span>{% translate "Contacts" %}</span></a>
         {% endif %}
         {% if can_view_contacts or can_view_sales or can_view_accounting %}
-        <a href="{% url 'report-index' %}" class="nav-item {% if 'report' in request.resolver_match.url_name or 'money-receipt' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 4v2h8V7H8Zm0 4v2h8v-2H8Zm0 4v2h5v-2H8Z"/></svg><span>Reports</span></a>
+        <a href="{% url 'report-index' %}" class="nav-item {% if 'report' in request.resolver_match.url_name or 'money-receipt' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 4v2h8V7H8Zm0 4v2h8v-2H8Zm0 4v2h5v-2H8Z"/></svg><span>{% translate "Reports" %}</span></a>
         {% endif %}
         {% if can_view_accounting %}
-        <span class="nav-label nav-section">Finance</span>
-        <a href="{% url 'expense-list' %}" class="nav-item {% if 'expense-' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4V3Zm3 4v2h10V7H7Zm0 4v2h6v-2H7Zm0 4v2h10v-2H7Z"/></svg><span>Expenses</span></a>
-        <a href="{% url 'accounting-overview' %}" class="nav-item {% if request.resolver_match.url_name == 'accounting-overview' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16v2H4v-2Zm1-8h3v6H5v-6Zm5-4h3v10h-3V7Zm5 2h3v8h-3V9ZM4 5l8-3 8 3v2H4V5Z"/></svg><span>Accounting</span></a>
-        <a href="{% url 'journal-list' %}" class="nav-item {% if 'journal' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 4v2h10V7H7Zm0 4v2h10v-2H7Zm0 4v2h7v-2H7Z"/></svg><span>Journals</span></a>
-        <a href="{% url 'voucher-list' %}" class="nav-item {% if 'voucher' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h12a2 2 0 0 1 2 2v18l-4-2-4 2-4-2-4 2V4a2 2 0 0 1 2-2Zm2 5v2h8V7H8Zm0 4v2h8v-2H8Zm0 4v2h5v-2H8Z"/></svg><span>Vouchers</span></a>
+        <span class="nav-label nav-section">{% translate "Finance" %}</span>
+        <a href="{% url 'expense-list' %}" class="nav-item {% if 'expense-' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4V3Zm3 4v2h10V7H7Zm0 4v2h6v-2H7Zm0 4v2h10v-2H7Z"/></svg><span>{% translate "Expenses" %}</span></a>
+        <a href="{% url 'accounting-overview' %}" class="nav-item {% if request.resolver_match.url_name == 'accounting-overview' %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16v2H4v-2Zm1-8h3v6H5v-6Zm5-4h3v10h-3V7Zm5 2h3v8h-3V9ZM4 5l8-3 8 3v2H4V5Z"/></svg><span>{% translate "Accounting" %}</span></a>
+        <a href="{% url 'journal-list' %}" class="nav-item {% if 'journal' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 4v2h10V7H7Zm0 4v2h10v-2H7Zm0 4v2h7v-2H7Z"/></svg><span>{% translate "Journals" %}</span></a>
+        <a href="{% url 'voucher-list' %}" class="nav-item {% if 'voucher' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h12a2 2 0 0 1 2 2v18l-4-2-4 2-4-2-4 2V4a2 2 0 0 1 2-2Zm2 5v2h8V7H8Zm0 4v2h8v-2H8Zm0 4v2h5v-2H8Z"/></svg><span>{% translate "Vouchers" %}</span></a>
         {% endif %}
         {% if user.is_superuser %}
-        <span class="nav-label nav-section">Administration</span>
-        <a href="{% url 'tenant-list' %}" class="nav-item {% if 'tenant-' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4V3Zm3 3v3h3V6H7Zm0 5v3h3v-3H7Zm0 5v2h3v-2H7Zm5-10v3h5V6h-5Zm0 5v3h5v-3h-5Zm0 5v2h5v-2h-5Z"/></svg><span>Businesses</span></a>
-        <a href="{% url 'default-unit-list' %}" class="nav-item {% if 'default-unit' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5Zm3 3v3h2V8H6Zm4 0v5h2V8h-2Zm4 0v3h2V8h-2Zm4 0v5h1V8h-1Z"/></svg><span>Default units</span></a>
-        <a href="{% url 'account-template-list' %}" class="nav-item {% if 'account-template' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v16H3V5a2 2 0 0 1 2-2Zm2 4v2h10V7H7Zm0 4v2h10v-2H7Zm0 4v2h7v-2H7Z"/></svg><span>Account templates</span></a>
+        <span class="nav-label nav-section">{% translate "Administration" %}</span>
+        <a href="{% url 'tenant-list' %}" class="nav-item {% if 'tenant-' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4V3Zm3 3v3h3V6H7Zm0 5v3h3v-3H7Zm0 5v2h3v-2H7Zm5-10v3h5V6h-5Zm0 5v3h5v-3h-5Zm0 5v2h5v-2h-5Z"/></svg><span>{% translate "Businesses" %}</span></a>
+        <a href="{% url 'default-unit-list' %}" class="nav-item {% if 'default-unit' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5Zm3 3v3h2V8H6Zm4 0v5h2V8h-2Zm4 0v3h2V8h-2Zm4 0v5h1V8h-1Z"/></svg><span>{% translate "Default units" %}</span></a>
+        <a href="{% url 'account-template-list' %}" class="nav-item {% if 'account-template' in request.resolver_match.url_name %}active{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v16H3V5a2 2 0 0 1 2-2Zm2 4v2h10V7H7Zm0 4v2h10v-2H7Zm0 4v2h7v-2H7Z"/></svg><span>{% translate "Account templates" %}</span></a>
         {% endif %}
       </nav>
-      <div class="sidebar-footer"><span class="system-state"><span class="status-dot"></span>Operational</span><small>Asia/Dhaka · {{ business.currency|default:"BDT" }}</small></div>
+      <div class="sidebar-footer">
+        {% include "includes/language-switcher.html" %}
+        <span class="system-state"><span class="status-dot"></span>{% translate "Operational" %}</span>
+        <small>{% translate "Asia/Dhaka &middot;" %} {{ business.currency|default:"BDT" }}</small>
+      </div>
     </aside>
     <main class="main-content">
       <header class="topbar">
         <div class="topbar-left">
-          <label class="mobile-menu" for="nav-toggle" aria-label="Open navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6Zm0 5h18v2H3v-2Zm0 5h18v2H3v-2Z"/></svg></label>
+          <label class="mobile-menu" for="nav-toggle" aria-label="{% translate 'Open navigation' %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6Zm0 5h18v2H3v-2Zm0 5h18v2H3v-2Z"/></svg></label>
           {% if available_businesses|length > 1 %}
-          <form class="business-switcher" method="get" action="{% url 'dashboard' %}"><label for="business-select">Business</label><select id="business-select" name="business" aria-label="Current business">{% for option in available_businesses %}<option value="{{ option.pk }}" {% if business.pk == option.pk %}selected{% endif %}>{{ option.name }}</option>{% endfor %}</select><button type="submit">Switch</button></form>
-          {% else %}<div class="business-identity"><span>Current business</span><strong>{{ business.name|default:"No business assigned" }}</strong></div>{% endif %}
+          <form class="business-switcher" method="get" action="{% url 'dashboard' %}"><label for="business-select">{% translate "Business" %}</label><select id="business-select" name="business" aria-label="{% translate 'Current business' %}">{% for option in available_businesses %}<option value="{{ option.pk }}" {% if business.pk == option.pk %}selected{% endif %}>{{ option.name }}</option>{% endfor %}</select><button type="submit">{% translate "Switch" %}</button></form>
+          {% else %}<div class="business-identity"><span>{% translate "Current business" %}</span><strong>{{ business.name|default:no_business_assigned }}</strong></div>{% endif %}
         </div>
-        <div class="user-menu"><span class="user-avatar">{{ user.username|first|upper }}</span><span class="user-copy"><strong>{{ user.get_full_name|default:user.username }}</strong><small>Signed in</small></span>{% if user.is_authenticated %}<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="link-button" type="submit">Sign out</button></form>{% endif %}</div>
+        <div class="user-menu"><span class="user-avatar">{{ user.username|first|upper }}</span><span class="user-copy"><strong>{{ user.get_full_name|default:user.username }}</strong><small>{% translate "Signed in" %}</small></span>{% if user.is_authenticated %}<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="link-button" type="submit">{% translate "Sign out" %}</button></form>{% endif %}</div>
       </header>
       {% if messages %}<div class="message-stack" role="status">{% for message in messages %}<div class="alert {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
       <div class="page-frame">{% block content %}{% endblock %}</div>

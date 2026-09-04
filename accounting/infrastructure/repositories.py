@@ -22,6 +22,7 @@ from accounting.models import (
 from core.models import Business
 from core.models import Party
 from core.infrastructure.numbering import allocate_reference_number
+from django.utils.translation import gettext_lazy as _
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,8 @@ class DjangoAccountTemplateRepository:
 
         if conflicts:
             raise ValidationError(
-                "Template conflicts must be resolved first: " + "; ".join(conflicts)
+                _("Template conflicts must be resolved first: %(conflicts)s")
+                % {"conflicts": "; ".join(conflicts)}
             )
         AccountTemplateApplication.objects.create(
             business=business,
@@ -219,11 +221,11 @@ class DjangoExpenseRepository:
                 or existing.payment_account_id != payment_account_id
             ):
                 raise ValidationError(
-                    "This expense request key was already used with different details."
+                    _("This expense request key was already used with different details.")
                 )
             return existing
         if expense_date > timezone.localdate():
-            raise ValidationError("Expense date cannot be in the future.")
+            raise ValidationError(_("Expense date cannot be in the future."))
         business = Business.objects.select_for_update().get(pk=business_id)
         period = FiscalPeriod.objects.select_for_update().filter(
             business_id=business_id,
@@ -231,9 +233,9 @@ class DjangoExpenseRepository:
             ends_on__gte=expense_date,
         ).first()
         if period is None:
-            raise ValidationError("No fiscal period covers the expense date.")
+            raise ValidationError(_("No fiscal period covers the expense date."))
         if period.is_locked:
-            raise ValidationError("The fiscal period covering the expense date is locked.")
+            raise ValidationError(_("The fiscal period covering the expense date is locked."))
         expense_account = Account.objects.select_for_update().filter(
             pk=expense_account_id,
             business_id=business_id,
@@ -241,14 +243,14 @@ class DjangoExpenseRepository:
             account_type=Account.Type.EXPENSE,
         ).first()
         if expense_account is None:
-            raise ValidationError("Select an active expense account for this business.")
+            raise ValidationError(_("Select an active expense account for this business."))
         payee = None
         if payee_id:
             payee = Party.objects.filter(
                 pk=payee_id, business_id=business_id, is_active=True
             ).first()
             if payee is None:
-                raise ValidationError("Select an active payee for this business.")
+                raise ValidationError(_("Select an active payee for this business."))
         payment_account = None
         payable_account = None
         if settlement == ExpenseRecord.Settlement.PAID:
@@ -260,25 +262,25 @@ class DjangoExpenseRepository:
             ).first()
             if payment_account is None:
                 raise ValidationError(
-                    "Select an active Cash, Bank, or Mobile Financial Services account."
+                    _("Select an active Cash, Bank, or Mobile Financial Services account.")
                 )
         elif settlement == ExpenseRecord.Settlement.PAYABLE:
             if payee is None:
-                raise ValidationError("A pay-later expense requires a payee.")
+                raise ValidationError(_("A pay-later expense requires a payee."))
             payable_account = Account.objects.select_for_update().filter(
                 business_id=business_id,
                 is_active=True,
                 system_role=Account.SystemRole.ACCOUNTS_PAYABLE,
             ).first()
             if payable_account is None:
-                raise ValidationError("An active Accounts Payable account is required.")
+                raise ValidationError(_("An active Accounts Payable account is required."))
         else:
-            raise ValidationError("Select whether this expense is paid now or payable later.")
+            raise ValidationError(_("Select whether this expense is paid now or payable later."))
         if amount <= 0:
-            raise ValidationError("Expense amount must be greater than zero.")
+            raise ValidationError(_("Expense amount must be greater than zero."))
         description = description.strip()
         if not description:
-            raise ValidationError("Expense description is required.")
+            raise ValidationError(_("Expense description is required."))
 
         number = allocate_reference_number(
             business_id=business_id, occurred_on=expense_date
@@ -368,11 +370,11 @@ class DjangoExpensePaymentRepository:
                 or existing.payment_date != payment_date
             ):
                 raise ValidationError(
-                    "This expense payment key was already used with different details."
+                    _("This expense payment key was already used with different details.")
                 )
             return existing
         if payment_date > timezone.localdate():
-            raise ValidationError("Payment date cannot be in the future.")
+            raise ValidationError(_("Payment date cannot be in the future."))
         expense = (
             ExpenseRecord.objects.select_for_update()
             .select_related("business", "payee", "payable_account")
@@ -382,9 +384,9 @@ class DjangoExpensePaymentRepository:
         if expense is None:
             raise ExpenseRecord.DoesNotExist
         if expense.settlement != ExpenseRecord.Settlement.PAYABLE:
-            raise ValidationError("Only pay-later expenses can receive allocated payments.")
+            raise ValidationError(_("Only pay-later expenses can receive allocated payments."))
         if payment_date < expense.expense_date:
-            raise ValidationError("Payment date cannot precede the expense date.")
+            raise ValidationError(_("Payment date cannot precede the expense date."))
         payment_account = Account.objects.select_for_update().filter(
             pk=payment_account_id,
             business_id=business_id,
@@ -393,7 +395,7 @@ class DjangoExpensePaymentRepository:
         ).first()
         if payment_account is None:
             raise ValidationError(
-                "Select an active Cash, Bank, or Mobile Financial Services account."
+                _("Select an active Cash, Bank, or Mobile Financial Services account.")
             )
         period = FiscalPeriod.objects.select_for_update().filter(
             business_id=business_id,
@@ -401,18 +403,19 @@ class DjangoExpensePaymentRepository:
             ends_on__gte=payment_date,
         ).first()
         if period is None:
-            raise ValidationError("No fiscal period covers the payment date.")
+            raise ValidationError(_("No fiscal period covers the payment date."))
         if period.is_locked:
-            raise ValidationError("The fiscal period covering the payment date is locked.")
+            raise ValidationError(_("The fiscal period covering the payment date is locked."))
         paid = ExpensePayment.objects.filter(expense=expense).aggregate(
             total=Sum("amount")
         )["total"] or Decimal("0.00")
         remaining = expense.amount - paid
         if amount <= 0:
-            raise ValidationError("Payment amount must be greater than zero.")
+            raise ValidationError(_("Payment amount must be greater than zero."))
         if amount > remaining:
             raise ValidationError(
-                f"Payment cannot exceed the remaining balance of {remaining:.2f}."
+                _("Payment cannot exceed the remaining balance of %(balance).2f.")
+                % {"balance": remaining}
             )
         number = allocate_reference_number(
             business_id=business_id, occurred_on=payment_date

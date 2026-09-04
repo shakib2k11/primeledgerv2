@@ -1,46 +1,46 @@
-{% extends "base.html" %}
-{% block title %}Account activity summary | Prime Ledger{% endblock %}
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "Account activity summary | Prime Ledger" %}{% endblock %}
 {% block content %}
 <header class="page-heading report-heading">
   <div>
-    <div class="breadcrumb"><a href="{% url 'report-index' %}">Reports</a><span>/</span><span>Accounting</span></div>
-    <h1>Account activity summary</h1>
-    <p class="lede">Opening, movement, and closing balances across the complete chart of accounts.</p>
+    <div class="breadcrumb"><a href="{% url 'report-index' %}">{% translate "Reports" %}</a><span>/</span><span>{% translate "Accounting" %}</span></div>
+    <h1>{% translate "Account activity summary" %}</h1>
+    <p class="lede">{% translate "Opening, movement, and closing balances across the complete chart of accounts." %}</p>
   </div>
   <div class="heading-actions report-export-actions">
-    <a class="button secondary" href="{% url 'account-activity-report-csv' %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3h2v10l3-3 1.4 1.4L12 16.8l-5.4-5.4L8 10l3 3V3ZM5 19h14v2H5v-2Z"/></svg>CSV</a>
-    <a class="button primary" href="{% url 'account-activity-report-pdf' %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6V2Zm8 2v4h4l-4-4ZM9 12v2h8v-2H9Zm0 4v2h6v-2H9Z"/></svg>Export PDF</a>
+    <a class="button secondary" href="{% url 'account-activity-report-csv' %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3h2v10l3-3 1.4 1.4L12 16.8l-5.4-5.4L8 10l3 3V3ZM5 19h14v2H5v-2Z"/></svg>{% translate "CSV" %}</a>
+    <a class="button primary" href="{% url 'account-activity-report-pdf' %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6V2Zm8 2v4h4l-4-4ZM9 12v2h8v-2H9Zm0 4v2h6v-2H9Z"/></svg>{% translate "Export PDF" %}</a>
   </div>
 </header>
 
 {% if totals %}
-<section class="report-summary account-activity-summary" aria-label="Report totals">
-  <div class="report-summary-item"><span>Opening balances</span><strong class="money">Dr {{ totals.opening_debit|floatformat:2 }}</strong><small>Cr {{ totals.opening_credit|floatformat:2 }} {{ business.currency }}</small></div>
-  <div class="report-summary-item"><span>Period debits</span><strong class="money">{{ totals.period_debit|floatformat:2 }}</strong><small>{{ date_range }}</small></div>
-  <div class="report-summary-item"><span>Period credits</span><strong class="money">{{ totals.period_credit|floatformat:2 }}</strong><small>{{ date_range }}</small></div>
-  <div class="report-summary-item primary"><span>Closing balances</span><strong class="money">Dr {{ totals.closing_debit|floatformat:2 }}</strong><small>Cr {{ totals.closing_credit|floatformat:2 }} {{ business.currency }}</small></div>
+<section class="report-summary account-activity-summary" aria-label="{% translate "Report totals" %}">
+  <div class="report-summary-item"><span>{% translate "Opening balances" %}</span><strong class="money">{% translate "Dr" %} {{ totals.opening_debit|floatformat:2 }}</strong><small>{% translate "Cr" %} {{ totals.opening_credit|floatformat:2 }} {{ business.currency }}</small></div>
+  <div class="report-summary-item"><span>{% translate "Period debits" %}</span><strong class="money">{{ totals.period_debit|floatformat:2 }}</strong><small>{{ date_range }}</small></div>
+  <div class="report-summary-item"><span>{% translate "Period credits" %}</span><strong class="money">{{ totals.period_credit|floatformat:2 }}</strong><small>{{ date_range }}</small></div>
+  <div class="report-summary-item primary"><span>{% translate "Closing balances" %}</span><strong class="money">{% translate "Dr" %} {{ totals.closing_debit|floatformat:2 }}</strong><small>{% translate "Cr" %} {{ totals.closing_credit|floatformat:2 }} {{ business.currency }}</small></div>
 </section>
 {% endif %}
 
 <section class="panel data-panel report-data-panel">
   <form class="report-filter-bar account-activity-filter" method="get">
-    <div class="report-filter-field report-search-field"><span>Reporting range</span><strong>Choose any start and end date</strong></div>
-    <label class="report-filter-field report-date-field"><span>From date</span><input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}"></label>
-    <label class="report-filter-field report-date-field"><span>To date</span><input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}"></label>
-    <div class="report-filter-actions"><button class="button tertiary small" type="submit">Apply range</button>{% if date_from or date_to %}<a class="filter-reset" href="{% url 'account-activity-report' %}">All dates</a>{% endif %}</div>
+    <div class="report-filter-field report-search-field"><span>{% translate "Reporting range" %}</span><strong>{% translate "Choose any start and end date" %}</strong></div>
+    <label class="report-filter-field report-date-field"><span>{% translate "From date" %}</span><input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}"></label>
+    <label class="report-filter-field report-date-field"><span>{% translate "To date" %}</span><input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}"></label>
+    <div class="report-filter-actions"><button class="button tertiary small" type="submit">{% translate "Apply range" %}</button>{% if date_from or date_to %}<a class="filter-reset" href="{% url 'account-activity-report' %}">{% translate "All dates" %}</a>{% endif %}</div>
   </form>
   {% if date_error %}<div class="alert error report-date-error">{{ date_error }}</div>{% endif %}
   <div class="table-wrap">
     <table class="report-table account-activity-table">
-      <thead><tr><th>Account</th><th>Type</th><th class="numeric">Opening Dr</th><th class="numeric">Opening Cr</th><th class="numeric">Period debit</th><th class="numeric">Period credit</th><th class="numeric">Closing Dr</th><th class="numeric">Closing Cr</th></tr></thead>
+      <thead><tr><th>{% translate "Account" %}</th><th>{% translate "Type" %}</th><th class="numeric">{% translate "Opening Dr" %}</th><th class="numeric">{% translate "Opening Cr" %}</th><th class="numeric">{% translate "Period debit" %}</th><th class="numeric">{% translate "Period credit" %}</th><th class="numeric">{% translate "Closing Dr" %}</th><th class="numeric">{% translate "Closing Cr" %}</th></tr></thead>
       <tbody>
         {% for row in rows %}
-        <tr><td><a class="table-link report-number" href="{% url 'account-list' %}?q={{ row.account.code|urlencode }}">{{ row.account.code }} · {{ row.account.name }}</a><small>{% if row.account.is_active %}Active account{% else %}Inactive account{% endif %}</small></td><td><span class="report-type">{{ row.account.get_account_type_display }}</span></td><td class="numeric money">{{ row.opening_debit|floatformat:2 }}</td><td class="numeric money">{{ row.opening_credit|floatformat:2 }}</td><td class="numeric money">{{ row.period_debit|floatformat:2 }}</td><td class="numeric money">{{ row.period_credit|floatformat:2 }}</td><td class="numeric money report-amount">{{ row.closing_debit|floatformat:2 }}</td><td class="numeric money report-amount">{{ row.closing_credit|floatformat:2 }}</td></tr>
+        <tr><td><a class="table-link report-number" href="{% url 'account-list' %}?q={{ row.account.code|urlencode }}">{{ row.account.code }} · {{ row.account.name }}</a><small>{% if row.account.is_active %}{% translate "Active account" %}{% else %}{% translate "Inactive account" %}{% endif %}</small></td><td><span class="report-type">{{ row.account.get_account_type_display }}</span></td><td class="numeric money">{{ row.opening_debit|floatformat:2 }}</td><td class="numeric money">{{ row.opening_credit|floatformat:2 }}</td><td class="numeric money">{{ row.period_debit|floatformat:2 }}</td><td class="numeric money">{{ row.period_credit|floatformat:2 }}</td><td class="numeric money report-amount">{{ row.closing_debit|floatformat:2 }}</td><td class="numeric money report-amount">{{ row.closing_credit|floatformat:2 }}</td></tr>
         {% empty %}
-        <tr><td colspan="8"><div class="empty-state report-empty"><strong>{% if date_error %}Correct the reporting range{% else %}No accounts configured{% endif %}</strong><p>{% if date_error %}The start date must be on or before the end date.{% else %}Create or apply a chart of accounts to populate this report.{% endif %}</p></div></td></tr>
+        <tr><td colspan="8"><div class="empty-state report-empty"><strong>{% if date_error %}{% translate "Correct the reporting range" %}{% else %}{% translate "No accounts configured" %}{% endif %}</strong><p>{% if date_error %}{% translate "The start date must be on or before the end date." %}{% else %}{% translate "Create or apply a chart of accounts to populate this report." %}{% endif %}</p></div></td></tr>
         {% endfor %}
       </tbody>
-      {% if totals %}<tfoot><tr><th colspan="2">Total ({{ business.currency }})</th><th class="numeric">{{ totals.opening_debit|floatformat:2 }}</th><th class="numeric">{{ totals.opening_credit|floatformat:2 }}</th><th class="numeric">{{ totals.period_debit|floatformat:2 }}</th><th class="numeric">{{ totals.period_credit|floatformat:2 }}</th><th class="numeric">{{ totals.closing_debit|floatformat:2 }}</th><th class="numeric">{{ totals.closing_credit|floatformat:2 }}</th></tr></tfoot>{% endif %}
+      {% if totals %}<tfoot><tr><th colspan="2">{% translate "Total (" %}{{ business.currency }})</th><th class="numeric">{{ totals.opening_debit|floatformat:2 }}</th><th class="numeric">{{ totals.opening_credit|floatformat:2 }}</th><th class="numeric">{{ totals.period_debit|floatformat:2 }}</th><th class="numeric">{{ totals.period_credit|floatformat:2 }}</th><th class="numeric">{{ totals.closing_debit|floatformat:2 }}</th><th class="numeric">{{ totals.closing_credit|floatformat:2 }}</th></tr></tfoot>{% endif %}
     </table>
   </div>
   {% include "includes/pagination.html" %}

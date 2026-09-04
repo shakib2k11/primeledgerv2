@@ -3,6 +3,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 
 class Business(models.Model):
@@ -64,8 +65,8 @@ class Role(models.Model):
 
 class Membership(models.Model):
     class Level(models.TextChoices):
-        BUSINESS_ADMIN = "business_admin", "Business Admin"
-        EMPLOYEE = "employee", "Employee"
+        BUSINESS_ADMIN = "business_admin", _("Business Admin")
+        EMPLOYEE = "employee", _("Employee")
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="memberships")
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="memberships")
@@ -79,15 +80,32 @@ class Membership(models.Model):
 
     def clean(self):
         if self.role_id and self.role.business_id != self.business_id:
-            raise ValidationError("Membership and role must belong to the same business.")
+            raise ValidationError(_("Membership and role must belong to the same business."))
+
+
+class UserLanguagePreference(models.Model):
+    class Language(models.TextChoices):
+        ENGLISH = "en", _("English")
+        BANGLA = "bn", _("বাংলা")
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="language_preference",
+    )
+    language = models.CharField(max_length=2, choices=Language.choices, default=Language.ENGLISH)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user}: {self.language}"
 
 
 class Party(models.Model):
     class Kind(models.TextChoices):
-        CUSTOMER = "customer", "Customer"
-        SUPPLIER = "supplier", "Supplier"
-        BOTH = "both", "Customer and Supplier"
-        EMPLOYEE = "employee", "Employee"
+        CUSTOMER = "customer", _("Customer")
+        SUPPLIER = "supplier", _("Supplier")
+        BOTH = "both", _("Customer and Supplier")
+        EMPLOYEE = "employee", _("Employee")
 
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="parties")
     name = models.CharField(max_length=160)
@@ -110,7 +128,7 @@ class Party(models.Model):
             unit__business__isnull=True
         ).exists():
             raise ValidationError({
-                "inherit_default_units": (
+                "inherit_default_units": _(
                     "Reassign products using default units to business-owned units before disabling inheritance."
                 )
             })
@@ -173,15 +191,15 @@ class InventoryUnit(models.Model):
             if InventoryUnit.objects.filter(
                 business__isnull=True, code__iexact=self.code
             ).exclude(pk=self.pk).exists():
-                raise ValidationError({"code": "This code is reserved by a default unit."})
+                raise ValidationError({"code": _("This code is reserved by a default unit.")})
             duplicate = duplicate.filter(business_id=self.business_id)
         if duplicate.exclude(pk=self.pk).exists():
-            raise ValidationError({"code": "This unit code is already in use."})
+            raise ValidationError({"code": _("This unit code is already in use.")})
         if self.pk:
             previous = InventoryUnit.objects.filter(pk=self.pk).only("code").first()
             if previous and previous.code != self.code and self.products.exists():
                 raise ValidationError({
-                    "code": "The code cannot be changed after products use this unit."
+                    "code": _("The code cannot be changed after products use this unit.")
                 })
 
     def __str__(self):
@@ -214,13 +232,13 @@ class Product(models.Model):
         from core.application.services import inventory_unit_is_available
 
         if self.unit_id and not inventory_unit_is_available(self.unit, self.business):
-            raise ValidationError({"unit": "Select an active unit available to this business."})
+            raise ValidationError({"unit": _("Select an active unit available to this business.")})
 
 
 class StockMovement(models.Model):
     class Direction(models.TextChoices):
-        IN = "in", "Inflow"
-        OUT = "out", "Outflow"
+        IN = "in", _("Inflow")
+        OUT = "out", _("Outflow")
 
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="stock_movements")
     number = models.CharField(max_length=8)
@@ -248,16 +266,16 @@ class StockMovement(models.Model):
 
     def clean(self):
         if self.number and (len(self.number) != 8 or not self.number.isdigit()):
-            raise ValidationError({"number": "The movement number must contain exactly eight digits."})
+            raise ValidationError({"number": _("The movement number must contain exactly eight digits.")})
         if self.product_id and self.product.business_id != self.business_id:
-            raise ValidationError("Stock movement and product must belong to the same business.")
+            raise ValidationError(_("Stock movement and product must belong to the same business."))
         if self.product_id and self.product.is_service:
-            raise ValidationError("Stock movement cannot be recorded for a service.")
+            raise ValidationError(_("Stock movement cannot be recorded for a service."))
 
     def save(self, *args, **kwargs):
         if self.pk:
-            raise ValidationError("Stock movements are append-only and cannot be edited.")
+            raise ValidationError(_("Stock movements are append-only and cannot be edited."))
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValidationError("Stock movements are append-only and cannot be deleted.")
+        raise ValidationError(_("Stock movements are append-only and cannot be deleted."))

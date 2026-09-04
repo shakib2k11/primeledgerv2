@@ -1,21 +1,21 @@
-{% extends "base.html" %}
-{% block title %}{{ title }} | Prime Ledger{% endblock %}
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{{ title }} {% translate "| Prime Ledger" %}{% endblock %}
 {% block content %}
 <header class="page-heading compact">
   <div>
-    <span class="overline">{{ kind_label }} workflow</span>
+    <span class="overline">{{ kind_label }} {% translate "workflow" %}</span>
     <h1>{{ title }}</h1>
-    <p class="lede">Choose the party, posting accounts, and products. The eight-digit record number is assigned automatically when the draft is first saved.</p>
+    <p class="lede">{% translate "Choose the party, payment arrangement, and products. Prime Ledger selects the accounting entries automatically and assigns the record number when saved." %}</p>
   </div>
 </header>
 
 <form method="post" class="journal-form" novalidate>
   {% csrf_token %}
-  <section class="panel record-form trade-header-form">
+  <section class="panel record-form trade-header-form" data-trade-settlement-form>
     {% if form.non_field_errors %}<div class="alert error form-wide">{{ form.non_field_errors }}</div>{% endif %}
     {% for field in form %}
       {% if field.name != 'discount_type' and field.name != 'discount_value' %}
-      <div class="field {% if field.name == 'notes' %}form-wide{% endif %}">
+      <div class="field {% if field.name == 'notes' %}form-wide{% endif %}"{% if field.name == 'funds_account' %} data-funds-account-field{% endif %}>
         <label for="{{ field.id_for_label }}">{{ field.label }}</label>
         {{ field }}
         {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
@@ -23,16 +23,20 @@
       </div>
       {% endif %}
     {% endfor %}
+    <div class="form-wide accounting-assurance">
+      <strong>{% translate "Accounting handled automatically" %}</strong>
+      <span data-trade-posting-explanation>{% if kind == 'sale' %}{% translate "Debit Accounts Receivable and credit Sales Revenue." %}{% else %}{% translate "Debit Inventory and credit Accounts Payable." %}{% endif %}</span>
+    </div>
   </section>
 
   <section class="panel line-editor" data-formset>
     <div class="panel-heading">
-      <div><span class="overline">Items</span><h2>Products &amp; services</h2></div>
-      <div class="line-actions"><span class="muted">Quantity × unit price</span><button class="button tertiary small" type="button" data-add-line>Add line</button></div>
+      <div><span class="overline">{% translate "Items" %}</span><h2>{% translate "Products &amp; services" %}</h2></div>
+      <div class="line-actions"><span class="muted">{% translate "Quantity × unit price" %}</span><button class="button tertiary small" type="button" data-add-line>{% translate "Add line" %}</button></div>
     </div>
     {{ formset.management_form }}
     {% if formset.non_form_errors %}<div class="alert error line-error">{{ formset.non_form_errors }}</div>{% endif %}
-    <div class="trade-line-grid trade-line-head"><span>Product / service</span><span>Description</span><span>Quantity</span><span>Unit price</span><span class="numeric">Amount</span><span></span></div>
+    <div class="trade-line-grid trade-line-head"><span>{% translate "Product / service" %}</span><span>{% translate "Description" %}</span><span>{% translate "Quantity" %}</span><span>{% translate "Unit price" %}</span><span class="numeric">{% translate "Amount" %}</span><span></span></div>
     <div data-formset-lines>
       {% for line_form in formset %}
       <div class="trade-line-grid">
@@ -41,8 +45,8 @@
         <div class="line-description">{{ line_form.description }}{{ line_form.description.errors }}</div>
         <div class="line-quantity">{{ line_form.quantity }}{{ line_form.quantity.errors }}</div>
         <div class="line-unit-price">{{ line_form.unit_price }}{{ line_form.unit_price.errors }}</div>
-        <div class="line-amount" data-line-amount aria-label="Calculated amount">0.00</div>
-        <div class="delete-line">{% if line_form.instance.pk %}{{ line_form.DELETE }} <label for="{{ line_form.DELETE.id_for_label }}">Remove</label>{% endif %}</div>
+        <div class="line-amount" data-line-amount aria-label="{% translate "Calculated amount" %}">0.00</div>
+        <div class="delete-line">{% if line_form.instance.pk %}{{ line_form.DELETE }} <label for="{{ line_form.DELETE.id_for_label }}">{% translate "Remove" %}</label>{% endif %}</div>
       </div>
       {% endfor %}
     </div>
@@ -53,16 +57,16 @@
         <div class="line-description">{{ formset.empty_form.description }}</div>
         <div class="line-quantity">{{ formset.empty_form.quantity }}</div>
         <div class="line-unit-price">{{ formset.empty_form.unit_price }}</div>
-        <div class="line-amount" data-line-amount aria-label="Calculated amount">0.00</div>
+        <div class="line-amount" data-line-amount aria-label="{% translate "Calculated amount" %}">0.00</div>
         <div></div>
       </div>
     </template>
     {% if kind == 'sale' %}
     <div class="sale-adjustment">
       <div class="sale-adjustment-copy">
-        <span class="overline">Sale adjustment</span>
-        <strong>Discount</strong>
-        <small>Applied once to the complete sale before posting.</small>
+        <span class="overline">{% translate "Sale adjustment" %}</span>
+        <strong>{% translate "Discount" %}</strong>
+        <small>{% translate "Applied once to the complete sale before posting." %}</small>
       </div>
       <div class="field">
         <label for="{{ form.discount_type.id_for_label }}">{{ form.discount_type.label }}</label>
@@ -80,8 +84,8 @@
   </section>
 
   <div class="form-actions journal-actions">
-    <a class="button secondary" href="{% if kind == 'sale' %}{% url 'sale-list' %}{% else %}{% url 'purchase-list' %}{% endif %}">Cancel</a>
-    <button class="button primary" type="submit">Save draft</button>
+    <a class="button secondary" href="{% if kind == 'sale' %}{% url 'sale-list' %}{% else %}{% url 'purchase-list' %}{% endif %}">{% translate "Cancel" %}</a>
+    <button class="button primary" type="submit">{% translate "Save draft" %}</button>
   </div>
 </form>
 {% endblock %}

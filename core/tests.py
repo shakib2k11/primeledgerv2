@@ -1,18 +1,156 @@
 from datetime import date
+from io import BytesIO
+import json
 
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import translation
 from rest_framework.test import APIClient
+from reportlab.pdfgen import canvas
 
 from accounting.models import Account, ChartOfAccountsTemplate
 
 from .application.services import CONTACTS_VIEW, INVENTORY_VIEW
 from .infrastructure.numbering import allocate_reference_number
-from .models import AnnualReferenceSequence, Business, InventoryUnit, Membership, Party, Product, Role, StockMovement
+from .models import AnnualReferenceSequence, Business, InventoryUnit, Membership, Party, Product, Role, StockMovement, UserLanguagePreference
+from .pdf import pdf_font
+
+
+class LocalizationTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username="language-owner", password="password")
+        self.business = Business.objects.create(name="Language Business", slug="language-business")
+        Membership.objects.create(
+            user=self.user,
+            business=self.business,
+            level=Membership.Level.BUSINESS_ADMIN,
+        )
+
+    def test_english_and_bangla_are_configured(self):
+        self.assertEqual(settings.LANGUAGE_CODE, "en")
+        self.assertEqual(dict(settings.LANGUAGES), {"en": "English", "bn": "বাংলা"})
+
+    def test_language_switch_persists_and_translates_login_shell(self):
+        response = self.client.post(
+            reverse("set_language"),
+            {"language": "bn", "next": reverse("login")},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.cookies[settings.LANGUAGE_COOKIE_NAME].value, "bn")
+        self.assertContains(response, '<html lang="bn">', html=False)
+        self.assertContains(response, "আবার স্বাগতম")
+        self.assertContains(response, "ইউজারনেম")
+
+    def test_authenticated_navigation_uses_selected_language(self):
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("set_language"),
+            {"language": "bn", "next": reverse("dashboard")},
+        )
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "বিক্রয়")
+        self.assertContains(response, "প্রতিবেদন")
+        self.assertContains(response, "হিসাবরক্ষণ")
+
+    def test_selected_language_translates_operational_page_bodies(self):
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("set_language"),
+            {"language": "bn", "next": reverse("dashboard")},
+        )
+
+        pages = {
+            "party-list": "যোগাযোগসমূহ",
+            "sale-list": "বিক্রয়",
+            "accounting-overview": "হিসাবের তালিকা",
+            "report-index": "যোগাযোগ তালিকা",
+        }
+        for route_name, translated_text in pages.items():
+            with self.subTest(route_name=route_name):
+                response = self.client.get(reverse(route_name))
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, translated_text)
+
+    def test_authenticated_language_preference_survives_cookie_removal(self):
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("set_language"),
+            {"language": "bn", "next": reverse("dashboard")},
+        )
+        self.assertEqual(
+            UserLanguagePreference.objects.get(user=self.user).language,
+            UserLanguagePreference.Language.BANGLA,
+        )
+
+        del self.client.cookies[settings.LANGUAGE_COOKIE_NAME]
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertContains(response, '<html lang="bn">', html=False)
+        self.assertEqual(self.client.cookies[settings.LANGUAGE_COOKIE_NAME].value, "bn")
+
+    def test_language_switch_rejects_an_external_redirect(self):
+        response = self.client.post(
+            reverse("set_language"),
+            {"language": "bn", "next": "https://example.com/unsafe"},
+        )
+        self.assertRedirects(response, reverse("dashboard"), fetch_redirect_response=False)
+
+    def test_javascript_catalog_uses_bangla_messages(self):
+        self.client.post(
+            reverse("set_language"),
+            {"language": "bn", "next": reverse("dashboard")},
+        )
+
+        response = self.client.get(reverse("javascript-catalog"))
+
+        self.assertEqual(response.status_code, 200)
+        escaped = json.dumps("কোনো মিল পাওয়া যায়নি", ensure_ascii=True)[1:-1]
+        self.assertIn(escaped, response.content.decode("utf-8"))
+
+    def test_python_choices_and_csv_exports_are_localized(self):
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("set_language"),
+            {"language": "bn", "next": reverse("dashboard")},
+        )
+        with translation.override("bn"):
+            self.assertEqual(str(Party.Kind.CUSTOMER.label), "গ্রাহক")
+
+        response = self.client.get(reverse("stock-movement-csv"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("মজুত চলাচল রেজিস্টার", response.content.decode("utf-8-sig"))
+
+    def test_model_validation_message_uses_bangla_catalog(self):
+        movement = StockMovement(business=self.business, number="123")
+
+        with translation.override("bn"), self.assertRaises(ValidationError) as error:
+            movement.full_clean()
+
+        message = error.exception.message_dict["number"][0]
+        self.assertRegex(str(message), "[\u0980-\u09ff]")
+
+    def test_bangla_pdf_font_can_render_embedded_text(self):
+        output = BytesIO()
+        with translation.override("bn"):
+            pdf = canvas.Canvas(output)
+            pdf.setFont(pdf_font(), 10)
+            pdf.drawString(40, 800, "বাংলা আর্থিক প্রতিবেদন")
+            pdf.save()
+
+        self.assertTrue(output.getvalue().startswith(b"%PDF"))
+        self.assertGreater(len(output.getvalue()), 1000)
 
 
 class ReferenceNumberTests(TestCase):

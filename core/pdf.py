@@ -2,7 +2,12 @@
 
 from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from django.conf import settings
 from django.utils import timezone
+from django.utils.formats import date_format
+from django.utils.translation import gettext as _, get_language
 
 
 INK = HexColor("#202927")
@@ -17,6 +22,26 @@ WHITE = HexColor("#FFFFFF")
 AMBER = HexColor("#8A641C")
 
 PAGE_MARGIN = 40
+BANGLA_FONT = "PrimeLedgerBangla"
+BANGLA_FONT_BOLD = "PrimeLedgerBanglaBold"
+
+
+def _register_bangla_fonts():
+    if BANGLA_FONT not in pdfmetrics.getRegisteredFontNames():
+        font_dir = settings.BASE_DIR / "assets" / "fonts"
+        pdfmetrics.registerFont(
+            TTFont(BANGLA_FONT, font_dir / "NotoSansBengali-Regular.ttf", shapable=True)
+        )
+        pdfmetrics.registerFont(
+            TTFont(BANGLA_FONT_BOLD, font_dir / "NotoSansBengali-Bold.ttf", shapable=True)
+        )
+
+
+def pdf_font(*, bold=False):
+    if (get_language() or "").startswith("bn"):
+        _register_bangla_fonts()
+        return BANGLA_FONT_BOLD if bold else BANGLA_FONT
+    return "Helvetica-Bold" if bold else "Helvetica"
 
 
 def clean_text(value, limit=100):
@@ -40,22 +65,22 @@ def draw_report_header(
     pdf.setFillColor(TEAL_SOFT)
     pdf.roundRect(PAGE_MARGIN, mark_y - 5, 31, 31, 5, stroke=0, fill=1)
     pdf.setFillColor(TEAL)
-    pdf.setFont("Helvetica-Bold", 9)
+    pdf.setFont(pdf_font(bold=True), 9)
     pdf.drawCentredString(PAGE_MARGIN + 15.5, mark_y + 6, "PL")
 
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 13)
+    pdf.setFont(pdf_font(bold=True), 13)
     pdf.drawString(PAGE_MARGIN + 42, mark_y + 12, clean_text(business.name, 62))
     pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica", 7.5)
-    identity = clean_text(getattr(business, "address", ""), 75) or "Business records"
+    pdf.setFont(pdf_font(), 7.5)
+    identity = clean_text(getattr(business, "address", ""), 75) or _("Business records")
     pdf.drawString(PAGE_MARGIN + 42, mark_y - 1, identity)
 
     pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica-Bold", 7)
-    pdf.drawRightString(width - PAGE_MARGIN, mark_y + 17, "PRIME LEDGER REPORT")
+    pdf.setFont(pdf_font(bold=True), 7)
+    pdf.drawRightString(width - PAGE_MARGIN, mark_y + 17, _("PRIME LEDGER REPORT"))
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 15)
+    pdf.setFont(pdf_font(bold=True), 15)
     pdf.drawRightString(width - PAGE_MARGIN, mark_y - 1, clean_text(title, 48))
 
     rule_y = mark_y - 17
@@ -64,7 +89,7 @@ def draw_report_header(
     pdf.line(PAGE_MARGIN, rule_y, width - PAGE_MARGIN, rule_y)
 
     metadata = list(metadata)
-    metadata.append(("Generated", f"{timezone.localdate():%d %b %Y}"))
+    metadata.append((_("Generated"), date_format(timezone.localdate(), "DATE_FORMAT")))
     if metadata:
         column_width = (width - (2 * PAGE_MARGIN)) / len(metadata)
         label_y = rule_y - 17
@@ -75,11 +100,11 @@ def draw_report_header(
                 pdf.setStrokeColor(BORDER)
                 pdf.line(x - 10, label_y + 4, x - 10, value_y - 3)
             pdf.setFillColor(MUTED)
-            pdf.setFont("Helvetica-Bold", 6.5)
-            pdf.drawString(x, label_y, clean_text(label, 24).upper())
+            pdf.setFont(pdf_font(bold=True), 6.5)
+            pdf.drawString(x, label_y, clean_text(_(str(label)), 24).upper())
             pdf.setFillColor(INK_SOFT)
-            pdf.setFont("Helvetica", 8)
-            pdf.drawString(x, value_y, clean_text(value, 42))
+            pdf.setFont(pdf_font(), 8)
+            pdf.drawString(x, value_y, clean_text(_(str(value)), 42))
         return width, height, value_y - 23
     return width, height, rule_y - 22
 
@@ -102,30 +127,30 @@ def draw_document_header(
     pdf.setFillColor(TEAL_SOFT)
     pdf.roundRect(PAGE_MARGIN, top_y - 6, 33, 33, 5, stroke=0, fill=1)
     pdf.setFillColor(TEAL)
-    pdf.setFont("Helvetica-Bold", 9)
+    pdf.setFont(pdf_font(bold=True), 9)
     pdf.drawCentredString(PAGE_MARGIN + 16.5, top_y + 6, "PL")
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 14)
+    pdf.setFont(pdf_font(bold=True), 14)
     pdf.drawString(PAGE_MARGIN + 44, top_y + 13, clean_text(business.name, 55))
     pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica", 7.5)
+    pdf.setFont(pdf_font(), 7.5)
     pdf.drawString(
         PAGE_MARGIN + 44,
         top_y - 1,
-        clean_text(getattr(business, "address", ""), 68) or "Generated business document",
+        clean_text(getattr(business, "address", ""), 68) or _("Generated business document"),
     )
 
     pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica-Bold", 7)
-    pdf.drawRightString(width - PAGE_MARGIN, top_y + 19, clean_text(document_type, 35).upper())
+    pdf.setFont(pdf_font(bold=True), 7)
+    pdf.drawRightString(width - PAGE_MARGIN, top_y + 19, clean_text(_(str(document_type)), 35).upper())
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 14)
+    pdf.setFont(pdf_font(bold=True), 14)
     pdf.drawRightString(width - PAGE_MARGIN, top_y + 2, clean_text(document_number, 30))
     pdf.setFillColor(INK_SOFT)
-    pdf.setFont("Helvetica", 8)
-    detail = f"{document_date:%d %b %Y}"
+    pdf.setFont(pdf_font(), 8)
+    detail = date_format(document_date, "DATE_FORMAT")
     if status:
-        detail += f"  /  {status}"
+        detail += f"  /  {_(str(status))}"
     pdf.drawRightString(width - PAGE_MARGIN, top_y - 12, detail)
 
     y = top_y - 30
@@ -140,8 +165,9 @@ def draw_table_header(pdf, y, columns, *, width, margin=PAGE_MARGIN):
     pdf.setStrokeColor(BORDER)
     pdf.line(margin, y - 7, width - margin, y - 7)
     pdf.setFillColor(TEAL)
-    pdf.setFont("Helvetica-Bold", 6.8)
+    pdf.setFont(pdf_font(bold=True), 6.8)
     for x, label, alignment in columns:
+        label = _(str(label))
         if alignment == "right":
             pdf.drawRightString(x, y + 1, clean_text(label, 28).upper())
         else:
@@ -163,11 +189,11 @@ def draw_empty_state(pdf, y, message, *, width, margin=PAGE_MARGIN):
     pdf.setStrokeColor(BORDER)
     pdf.roundRect(margin, y - 52, width - (2 * margin), 62, 4, stroke=1, fill=1)
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 9)
-    pdf.drawCentredString(width / 2, y - 17, clean_text(message, 90))
+    pdf.setFont(pdf_font(bold=True), 9)
+    pdf.drawCentredString(width / 2, y - 17, clean_text(_(str(message)), 90))
     pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica", 7.5)
-    pdf.drawCentredString(width / 2, y - 33, "No rows were available for the selected filters.")
+    pdf.setFont(pdf_font(), 7.5)
+    pdf.drawCentredString(width / 2, y - 33, _("No rows were available for the selected filters."))
     return y - 67
 
 
@@ -177,20 +203,20 @@ def draw_report_total(pdf, y, label, amount, *, width, currency, margin=PAGE_MAR
     pdf.setFillColor(TEAL_SOFT)
     pdf.roundRect(x, y - 18, box_width, 38, 4, stroke=0, fill=1)
     pdf.setFillColor(TEAL)
-    pdf.setFont("Helvetica-Bold", 7)
-    pdf.drawString(x + 12, y + 5, clean_text(label, 32).upper())
+    pdf.setFont(pdf_font(bold=True), 7)
+    pdf.drawString(x + 12, y + 5, clean_text(_(str(label)), 32).upper())
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 11)
+    pdf.setFont(pdf_font(bold=True), 11)
     pdf.drawRightString(x + box_width - 12, y + 3, f"{amount:.2f} {currency}")
     return y - 32
 
 
-def draw_page_footer(pdf, *, width, page_number, note="Generated by Prime Ledger"):
+def draw_page_footer(pdf, *, width, page_number, note=None):
     y = 27
     pdf.setStrokeColor(BORDER)
     pdf.setLineWidth(.5)
     pdf.line(PAGE_MARGIN, y + 10, width - PAGE_MARGIN, y + 10)
     pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica", 6.8)
-    pdf.drawString(PAGE_MARGIN, y, clean_text(note, 90))
-    pdf.drawRightString(width - PAGE_MARGIN, y, f"Page {page_number}")
+    pdf.setFont(pdf_font(), 6.8)
+    pdf.drawString(PAGE_MARGIN, y, clean_text(note or _("Generated by Prime Ledger"), 90))
+    pdf.drawRightString(width - PAGE_MARGIN, y, _("Page %(number)s") % {"number": page_number})

@@ -16,6 +16,7 @@ from core.application.services import (
 from core.infrastructure.repositories import DjangoBusinessReader
 from core.infrastructure.numbering import allocate_reference_number
 from core.models import InventoryUnit, Party, Product, StockMovement
+from django.utils.translation import gettext_lazy as _
 
 
 def validation_detail(exc):
@@ -72,7 +73,7 @@ class PartySerializer(serializers.ModelSerializer):
         if self.instance:
             duplicate = duplicate.exclude(pk=self.instance.pk)
         if duplicate.exists():
-            raise serializers.ValidationError("A contact with this name and type already exists.")
+            raise serializers.ValidationError(_("A contact with this name and type already exists."))
         return attrs
 
     def create(self, validated_data):
@@ -106,7 +107,7 @@ class ProductSerializer(serializers.ModelSerializer):
             if self.instance:
                 duplicate = duplicate.exclude(pk=self.instance.pk)
             if duplicate.exists():
-                raise serializers.ValidationError("This SKU is already in use in this business.")
+                raise serializers.ValidationError(_("This SKU is already in use in this business."))
         return value
 
     def create(self, validated_data):

@@ -30,6 +30,7 @@ from operations.models import (
     SaleSetoffAllocation,
     TradeDocument,
 )
+from django.utils.translation import gettext_lazy as _
 
 
 class DjangoTradeDocumentRepository:
@@ -52,7 +53,7 @@ class DjangoTradeDocumentRepository:
         document.period = FiscalPeriod.objects.select_for_update().get(pk=document.period_id)
         lines = list(document.lines.all())
         if not lines:
-            raise ValidationError("A sale or purchase requires at least one line.")
+            raise ValidationError(_("A sale or purchase requires at least one line."))
         document.full_clean()
         for line in lines:
             line.full_clean()
@@ -84,7 +85,9 @@ class DjangoTradeDocumentRepository:
                         stock_value -= movement_value
                 if on_hand < quantity:
                     product = next(line.product for line in lines if line.product_id == product_id)
-                    raise ValidationError(f"Insufficient stock for {product.name}.")
+                    raise ValidationError(
+                        _("Insufficient stock for %(product)s.") % {"product": product.name}
+                    )
                 average_cost = (
                     stock_value / on_hand if on_hand > 0 else Decimal("0.00")
                 ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -98,7 +101,7 @@ class DjangoTradeDocumentRepository:
         document.full_clean()
         total = document.total
         if total <= 0:
-            raise ValidationError("A sale or purchase total must be greater than zero.")
+            raise ValidationError(_("A sale or purchase total must be greater than zero."))
         journal = JournalEntry.objects.create(
             business=document.business,
             period=document.period,
@@ -137,7 +140,7 @@ class DjangoTradeDocumentRepository:
             cogs_account = mapped_accounts.get(Account.SystemRole.COST_OF_GOODS_SOLD)
             if not inventory_account or not cogs_account:
                 raise ValidationError(
-                    "Product sales require active Inventory and Cost of Goods Sold posting roles. Apply the default chart template or map these accounts."
+                    _("Product sales require active Inventory and Cost of Goods Sold posting roles. Apply the default chart template or map these accounts.")
                 )
             JournalLine.objects.create(
                 entry=journal,
@@ -217,7 +220,7 @@ class DjangoTradeDocumentRepository:
             posted_at=timezone.now(),
         )
         if not updated:
-            raise ValidationError("This document was already posted.")
+            raise ValidationError(_("This document was already posted."))
         document.status = TradeDocument.Status.POSTED
         document.subtotal = subtotal
         document.total = total
@@ -236,7 +239,7 @@ class DjangoSalePaymentRepository:
             or existing.payment_date != payment_date
         ):
             raise ValidationError(
-                "This payment request key was already used with different details."
+                _("This payment request key was already used with different details.")
             )
         return existing
 
@@ -293,13 +296,13 @@ class DjangoSalePaymentRepository:
                 payment_date=payment_date,
             )
         if sale.status != TradeDocument.Status.POSTED:
-            raise ValidationError("Payment can be received only against a posted sale.")
+            raise ValidationError(_("Payment can be received only against a posted sale."))
         if (
             sale.debit_account.system_role
             != Account.SystemRole.ACCOUNTS_RECEIVABLE
         ):
             raise ValidationError(
-                "This sale was not posted to Accounts Receivable and cannot receive an allocated payment."
+                _("This sale was not posted to Accounts Receivable and cannot receive an allocated payment.")
             )
 
         payment_account = Account.objects.select_for_update().filter(
@@ -314,7 +317,7 @@ class DjangoSalePaymentRepository:
         ).first()
         if payment_account is None:
             raise ValidationError(
-                "Select an active account mapped as Cash, Bank, or Mobile Financial Services."
+                _("Select an active account mapped as Cash, Bank, or Mobile Financial Services.")
             )
 
         period = FiscalPeriod.objects.select_for_update().filter(
@@ -323,9 +326,9 @@ class DjangoSalePaymentRepository:
             ends_on__gte=payment_date,
         ).first()
         if period is None:
-            raise ValidationError("No fiscal period covers the payment date.")
+            raise ValidationError(_("No fiscal period covers the payment date."))
         if period.is_locked:
-            raise ValidationError("The fiscal period covering the payment date is locked.")
+            raise ValidationError(_("The fiscal period covering the payment date is locked."))
 
         paid = SalePayment.objects.filter(sale=sale).aggregate(total=Sum("amount"))[
             "total"
@@ -335,12 +338,13 @@ class DjangoSalePaymentRepository:
         )["total"] or Decimal("0.00")
         remaining = (sale.total - paid).quantize(Decimal("0.01"))
         if amount <= 0:
-            raise ValidationError("Payment amount must be greater than zero.")
+            raise ValidationError(_("Payment amount must be greater than zero."))
         if remaining <= 0:
-            raise ValidationError("This invoice is already paid in full.")
+            raise ValidationError(_("This invoice is already paid in full."))
         if amount > remaining:
             raise ValidationError(
-                f"Payment cannot exceed the remaining balance of {remaining:.2f}."
+                _("Payment cannot exceed the remaining balance of %(balance).2f.")
+                % {"balance": remaining}
             )
 
         number = allocate_reference_number(
@@ -404,7 +408,7 @@ class DjangoSalePaymentRepository:
             DjangoMoneyReceiptRepository(),
         )
         if receipt_result is None:
-            raise ValidationError("The money receipt could not be generated.")
+            raise ValidationError(_("The money receipt could not be generated."))
         receipt = MoneyReceipt.objects.get(pk=receipt_result.receipt_id)
         payment = SalePayment(
             business=sale.business,
@@ -441,7 +445,7 @@ class DjangoPurchasePaymentRepository:
             or existing.payment_date != payment_date
         ):
             raise ValidationError(
-                "This payment request key was already used with different details."
+                _("This payment request key was already used with different details.")
             )
         return existing
 
@@ -498,13 +502,13 @@ class DjangoPurchasePaymentRepository:
                 payment_date=payment_date,
             )
         if purchase.status != TradeDocument.Status.POSTED:
-            raise ValidationError("Payment can be made only against a posted purchase.")
+            raise ValidationError(_("Payment can be made only against a posted purchase."))
         if (
             purchase.credit_account.system_role
             != Account.SystemRole.ACCOUNTS_PAYABLE
         ):
             raise ValidationError(
-                "This purchase was not posted to Accounts Payable and cannot receive an allocated payment."
+                _("This purchase was not posted to Accounts Payable and cannot receive an allocated payment.")
             )
 
         payment_account = Account.objects.select_for_update().filter(
@@ -519,7 +523,7 @@ class DjangoPurchasePaymentRepository:
         ).first()
         if payment_account is None:
             raise ValidationError(
-                "Select an active account mapped as Cash, Bank, or Mobile Financial Services."
+                _("Select an active account mapped as Cash, Bank, or Mobile Financial Services.")
             )
 
         period = FiscalPeriod.objects.select_for_update().filter(
@@ -528,9 +532,9 @@ class DjangoPurchasePaymentRepository:
             ends_on__gte=payment_date,
         ).first()
         if period is None:
-            raise ValidationError("No fiscal period covers the payment date.")
+            raise ValidationError(_("No fiscal period covers the payment date."))
         if period.is_locked:
-            raise ValidationError("The fiscal period covering the payment date is locked.")
+            raise ValidationError(_("The fiscal period covering the payment date is locked."))
 
         paid = PurchasePayment.objects.filter(purchase=purchase).aggregate(
             total=Sum("amount")
@@ -540,12 +544,13 @@ class DjangoPurchasePaymentRepository:
         )["total"] or Decimal("0.00")
         remaining = (purchase.total - paid).quantize(Decimal("0.01"))
         if amount <= 0:
-            raise ValidationError("Payment amount must be greater than zero.")
+            raise ValidationError(_("Payment amount must be greater than zero."))
         if remaining <= 0:
-            raise ValidationError("This supplier invoice is already paid in full.")
+            raise ValidationError(_("This supplier invoice is already paid in full."))
         if amount > remaining:
             raise ValidationError(
-                f"Payment cannot exceed the remaining balance of {remaining:.2f}."
+                _("Payment cannot exceed the remaining balance of %(balance).2f.")
+                % {"balance": remaining}
             )
 
         number = allocate_reference_number(
@@ -656,7 +661,7 @@ class DjangoBalanceSetoffRepository:
             or existing_purchases != self._normalized(purchase_allocations)
         ):
             raise ValidationError(
-                "This set-off request key was already used with different details."
+                _("This set-off request key was already used with different details.")
             )
         return existing
 
@@ -688,7 +693,7 @@ class DjangoBalanceSetoffRepository:
                 purchase_allocations=purchase_allocations,
             )
         if setoff_date > timezone.localdate():
-            raise ValidationError("Set-off date cannot be in the future.")
+            raise ValidationError(_("Set-off date cannot be in the future."))
 
         party = Party.objects.select_for_update().filter(
             pk=party_id,
@@ -698,7 +703,7 @@ class DjangoBalanceSetoffRepository:
         ).first()
         if party is None:
             raise ValidationError(
-                "Select an active contact classified as Customer and Supplier."
+                _("Select an active contact classified as Customer and Supplier.")
             )
 
         existing = BalanceSetoff.objects.filter(
@@ -718,7 +723,7 @@ class DjangoBalanceSetoffRepository:
         normalized_purchases = self._normalized(purchase_allocations)
         if not normalized_sales or not normalized_purchases:
             raise ValidationError(
-                "Select at least one receivable invoice and one payable purchase."
+                _("Select at least one receivable invoice and one payable purchase.")
             )
         if (
             len({document_id for document_id, _ in normalized_sales})
@@ -726,9 +731,9 @@ class DjangoBalanceSetoffRepository:
             or len({document_id for document_id, _ in normalized_purchases})
             != len(normalized_purchases)
         ):
-            raise ValidationError("Each document may be allocated only once per set-off.")
+            raise ValidationError(_("Each document may be allocated only once per set-off."))
         if any(amount <= 0 for _, amount in normalized_sales + normalized_purchases):
-            raise ValidationError("Every set-off allocation must be greater than zero.")
+            raise ValidationError(_("Every set-off allocation must be greater than zero."))
         sale_total = sum((amount for _, amount in normalized_sales), Decimal("0.00"))
         purchase_total = sum(
             (amount for _, amount in normalized_purchases),
@@ -736,7 +741,7 @@ class DjangoBalanceSetoffRepository:
         )
         if sale_total != purchase_total:
             raise ValidationError(
-                "Receivable and payable allocation totals must be equal."
+                _("Receivable and payable allocation totals must be equal.")
             )
 
         period = FiscalPeriod.objects.select_for_update().filter(
@@ -745,9 +750,9 @@ class DjangoBalanceSetoffRepository:
             ends_on__gte=setoff_date,
         ).first()
         if period is None:
-            raise ValidationError("No fiscal period covers the set-off date.")
+            raise ValidationError(_("No fiscal period covers the set-off date."))
         if period.is_locked:
-            raise ValidationError("The fiscal period covering the set-off date is locked.")
+            raise ValidationError(_("The fiscal period covering the set-off date is locked."))
 
         accounts = {
             account.system_role: account
@@ -764,7 +769,7 @@ class DjangoBalanceSetoffRepository:
         payable_account = accounts.get(Account.SystemRole.ACCOUNTS_PAYABLE)
         if not receivable_account or not payable_account:
             raise ValidationError(
-                "Active Accounts Receivable and Accounts Payable posting accounts are required."
+                _("Active Accounts Receivable and Accounts Payable posting accounts are required.")
             )
 
         sale_amounts = dict(normalized_sales)
@@ -795,29 +800,33 @@ class DjangoBalanceSetoffRepository:
         )
         if len(sales) != len(sale_amounts):
             raise ValidationError(
-                "Every receivable allocation must reference an open posted invoice for this contact."
+                _("Every receivable allocation must reference an open posted invoice for this contact.")
             )
         if len(purchases) != len(purchase_amounts):
             raise ValidationError(
-                "Every payable allocation must reference an open posted purchase for this contact."
+                _("Every payable allocation must reference an open posted purchase for this contact.")
             )
         for document in sales:
             if document.document_date > setoff_date:
                 raise ValidationError(
-                    f"Set-off date cannot precede sale {document.number}."
+                    _("Set-off date cannot precede sale %(number)s.")
+                    % {"number": document.number}
                 )
             if sale_amounts[document.pk] > document.balance_due:
                 raise ValidationError(
-                    f"Allocation cannot exceed sale {document.number}'s balance of {document.balance_due:.2f}."
+                    _("Allocation cannot exceed sale %(number)s's balance of %(balance).2f.")
+                    % {"number": document.number, "balance": document.balance_due}
                 )
         for document in purchases:
             if document.document_date > setoff_date:
                 raise ValidationError(
-                    f"Set-off date cannot precede purchase {document.number}."
+                    _("Set-off date cannot precede purchase %(number)s.")
+                    % {"number": document.number}
                 )
             if purchase_amounts[document.pk] > document.balance_due:
                 raise ValidationError(
-                    f"Allocation cannot exceed purchase {document.number}'s balance of {document.balance_due:.2f}."
+                    _("Allocation cannot exceed purchase %(number)s's balance of %(balance).2f.")
+                    % {"number": document.number, "balance": document.balance_due}
                 )
 
         number = allocate_reference_number(

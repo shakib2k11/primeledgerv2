@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from core.models import Business, Membership
+from django.utils.translation import gettext_lazy as _
 
 
 class DjangoBusinessReader:
@@ -48,6 +49,6 @@ class DjangoJournalRepository:
         entry.validate_for_posting()
         updated = JournalEntry.objects.filter(pk=entry.pk, posted=False).update(posted=True)
         if not updated:
-            raise ValidationError("This journal entry was already posted.")
+            raise ValidationError(_("This journal entry was already posted."))
         entry.posted = True
         return entry

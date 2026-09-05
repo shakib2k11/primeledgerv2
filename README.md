@@ -8,7 +8,7 @@ The product should make these daily questions easy to answer:
 
 - What was sold, purchased, received, paid, or returned today?
 - Which products are available, moving slowly, or below reorder level?
-- Which customers owe money and which supplier balances are due?
+- Which parties owe money and which party balances are due?
 - Is the business cash-positive and profitable for the selected period?
 - Which employee actions require review?
 
@@ -19,14 +19,14 @@ The first release is single-location per business, BDT-first, Bangladesh timezon
 - Shared-schema tenancy through `Business` ownership on domain records
 - Super Admin-created businesses with Business Admin and Employee memberships
 - Custom business roles with menu/feature permission keys
-- Customers, suppliers, products, services, SKU/barcode and stock movements
+- Generic parties, products, services, SKU/barcode and stock movements
 - Accounting accounts, fiscal periods, balanced journal entries and vouchers
 - Super Admin-managed chart-of-accounts templates with a seeded 43-account default
 - Draft and posted sales/purchases with product or service line items
 - Fixed-amount or percentage sale discounts with net invoice and journal totals
 - Atomic sales/purchase posting into journals, vouchers, stock movements, weighted-average cost of goods sold, and money receipts for immediately paid sales
 - Filtered sales/purchase registers and deterministic CSV/PDF exports
-- Tenant-scoped contact, posted invoice, money receipt, and arbitrary date-range account activity reports with CSV/PDF exports
+- Tenant-scoped party, posted invoice, money receipt, and arbitrary date-range account activity reports with CSV/PDF exports
 - Printable sales invoices and money receipts linked to immutable posted records
 - Complete English/বাংলা presentation across navigation, forms, validation and status messages, JavaScript controls, CSV exports, and furnished PDF reports, with a saved per-user preference and an embedded Bengali document font
 - PostgreSQL-first runtime configuration through `DATABASE_URL`
@@ -69,7 +69,7 @@ The interface should feel calm, precise, and executive-friendly: dense enough fo
 - Show Bengali labels/documents only when the business locale requests them; keep internal identifiers, API fields, and permission keys in English.
 - Do not use gradients, decorative blobs, excessive rounded controls, animated charts, or a dark-mode-first visual language.
 
-Recommended primary navigation: Overview, Sales, Purchases, Inventory, Customers, Suppliers, Accounting, Reports, and Settings. Hide inaccessible menu items rather than displaying dead ends, while preserving direct-URL authorization on the backend.
+Recommended primary navigation: Overview, Sales, Purchases, Inventory, Parties, Accounting, Reports, and Settings. Hide inaccessible menu items rather than displaying dead ends, while preserving direct-URL authorization on the backend.
 
 ### Localization status
 
@@ -102,7 +102,7 @@ The web application is available at `http://127.0.0.1:8000/` and PostgreSQL data
 docker compose exec web python manage.py createsuperuser
 ```
 
-Sign in to Prime Ledger and open **Businesses** in the Administration navigation. From there the Super Admin can create a tenant, edit its identity/settings, assign the first Business Admin, and follow the onboarding checklist for fiscal periods, contacts, and catalog items. A new business automatically receives the active default chart of accounts. These routes are protected by backend superuser checks and are not available to ordinary business members.
+Sign in to Prime Ledger and open **Businesses** in the Administration navigation. From there the Super Admin can create a tenant, edit its identity/settings, assign the first Business Admin, and follow the onboarding checklist for fiscal periods, parties, and catalog items. A new business automatically receives the active default chart of accounts. These routes are protected by backend superuser checks and are not available to ordinary business members.
 
 The Super Admin maintains reusable charts under **Administration → Account templates**. Template changes affect future applications only; each application copies accounts into the tenant's own ledger. For a business created before this feature, select the business, open **Accounting → Chart of accounts**, and choose **Apply template**.
 
@@ -130,7 +130,7 @@ Open `http://127.0.0.1:8000/admin/` for the initial management surface and `http
 - Tenant setup by Super Admin
 - Business Admin, Employee, and custom role permissions
 - Products, services, controlled inventory units, SKU/barcode, pricing, and reorder levels
-- Customer and supplier records with opening balances
+- Generic party records reusable across sales, purchases, receipts, payments, and future extensions
 - Draft and posted sales and purchases with split product/service lines
 - Sale-level fixed or percentage discounts shown on drafts, invoices, registers, and exports
 - Stock inflow/outflow and movement history
@@ -140,20 +140,27 @@ Open `http://127.0.0.1:8000/admin/` for the initial management surface and `http
 - Moving weighted-average inventory valuation and automatic COGS/Inventory journal lines on product sales
 - Operational dashboard plus stock, sales, and purchase registers
 - Sales/purchase document PDF, register PDF, and CSV export
-- Customer/supplier directory, posted invoice register, and receipt-voucher register
+- Party directory, posted invoice register, and receipt-voucher register
 - Individual printable sales invoices and money receipts
 - Automatic immutable money receipts when a sale is posted to an account mapped as Cash, Bank, or Mobile Financial Services
-- Partial and final customer-payment allocation from posted credit invoices, with automatic journal, receipt voucher, and money receipt generation
-- Partial and final supplier-payment allocation from posted Accounts Payable purchases, with automatic journal and printable payment voucher generation
-- Dedicated **Payments** workspace for open customer receivables, supplier payables, and recent settlement activity
-- Invoice-level receivable/payable set-off for contacts classified as Customer & Supplier, with multi-document allocation, automatic contra journal/voucher, and a printable statement
+- Partial and final receivable-payment allocation from posted credit invoices, with automatic journal, receipt voucher, and money receipt generation
+- Partial and final payable-payment allocation from posted Accounts Payable purchases, with automatic journal and printable payment voucher generation
+- Dedicated **Payments** workspace for open receivables, payables, and recent party settlement activity
+- Invoice-level receivable/payable set-off for any party with both balances, with multi-document allocation, automatic contra journal/voucher, and a printable statement
 - Dedicated operating-expense workflow for rent, employee salary, utilities, professional fees, and contingent expenditure, with paid-now/pay-later posting, partial payable settlement, expense/payment vouchers, and CSV/PDF registers
 
-Sales and purchase posting is transactional and idempotent. Routine entry asks for a business-facing payment arrangement—**Receive later / Pay later**, **Cash**, **Bank**, or **Mobile financial services**—and shows only the matching funds account when one is required. Prime Ledger derives Accounts Receivable, Inventory, Accounts Payable, Sales Revenue, and the debit/credit direction automatically; unrestricted account selection remains in Manual Journal for accountants. A successful post creates the balanced journal entry, immutable voucher, and applicable stock movements together. An immediately paid sale also creates one immutable money receipt with the net sale amount. A credit sale posted to Accounts Receivable exposes **Receive payment**: each partial or final collection is allocated to that invoice, debits the selected funds account, credits Accounts Receivable, and creates an immutable receipt voucher and money receipt atomically. A purchase posted to Accounts Payable exposes **Pay supplier**: each allocation debits Accounts Payable, credits the selected Cash, Bank, or Mobile Financial Services account, and creates an immutable printable payment voucher. Overpayments, future dates, locked periods, cross-tenant accounts, and duplicate request-key conflicts are rejected before side effects. Sales may apply one fixed-amount or percentage discount; receivable, revenue, voucher, invoice, receipt, and report totals use the net amount after discount. Product sales debit Cost of Goods Sold and credit Inventory using the moving weighted-average cost of stock on hand, so a commercial discount never changes inventory cost; service lines do not affect stock or COGS. A failed validation—including an excessive discount, insufficient sale stock, missing required posting roles, or a locked period—rolls back every side effect. Draft sales and purchases in open periods can be deleted after explicit confirmation; posted or locked-period documents cannot be deleted, and a deleted draft's automatic number is never reused.
+Sales and purchase posting is transactional and idempotent. Routine entry asks for a business-facing payment arrangement—**Receive later / Pay later**, **Cash**, **Bank**, or **Mobile financial services**—and shows only the matching funds account when one is required. Prime Ledger derives Accounts Receivable, Inventory, Accounts Payable, Sales Revenue, and the debit/credit direction automatically; unrestricted account selection remains in Manual Journal for accountants. A successful post creates the balanced journal entry, immutable voucher, and applicable stock movements together. An immediately paid sale also creates one immutable money receipt with the net sale amount. A credit sale posted to Accounts Receivable exposes **Receive payment**: each partial or final collection is allocated to that invoice, debits the selected funds account, credits Accounts Receivable, and creates an immutable receipt voucher and money receipt atomically. A purchase posted to Accounts Payable exposes **Record payment**: each allocation debits Accounts Payable, credits the selected Cash, Bank, or Mobile Financial Services account, and creates an immutable printable payment voucher. Overpayments, future dates, locked periods, cross-tenant accounts, and duplicate request-key conflicts are rejected before side effects. Sales may apply one fixed-amount or percentage discount; receivable, revenue, voucher, invoice, receipt, and report totals use the net amount after discount. Product sales debit Cost of Goods Sold and credit Inventory using the moving weighted-average cost of stock on hand, so a commercial discount never changes inventory cost; service lines do not affect stock or COGS. A failed validation—including an excessive discount, insufficient sale stock, missing required posting roles, or a locked period—rolls back every side effect. Draft sales and purchases in open periods can be deleted after explicit confirmation; posted or locked-period documents cannot be deleted, and a deleted draft's automatic number is never reused.
 
-When the same contact is classified as **Customer & Supplier** and has both open balances, use **Payments → Mutual balances** to allocate one or more sales against one or more purchases. Posting debits Accounts Payable and credits Accounts Receivable by equal amounts, creates an immutable contra voucher and printable statement, and updates both documents without moving cash. Unbalanced or excessive allocations, future dates, locked periods, and cross-tenant documents are rejected atomically.
+When the same party has both open balances, use **Payments → Mutual balances** to allocate one or more sales against one or more purchases. No customer/supplier classification is required. Posting debits Accounts Payable and credits Accounts Receivable by equal amounts, creates an immutable contra voucher and printable statement, and updates both documents without moving cash. Unbalanced or excessive allocations, future dates, locked periods, and cross-tenant documents are rejected atomically.
 
-The **Expenses** workspace recognizes operating costs directly against an active expense account. **Paid now** debits the expense and credits Cash, Bank, or Mobile Financial Services. **Pay later** debits the expense and credits Accounts Payable; subsequent partial or final payments debit that liability and credit the selected funds account without recognizing the expense twice. Employees can be maintained as Employee contacts, while landlords and other vendors can remain suppliers. Every posting creates an immutable journal and voucher, respects period locks and tenant boundaries, and appears in the filtered expense register and furnished PDF/CSV exports.
+### Generic party rollout
+
+- **Phase 1 — implemented:** all active parties can be used in sales, purchases, receipts, payments, expenses, and mutual balance set-off. Classification is removed from the operational UI and reports. The legacy API `kind` property remains optional and defaults to `both` for backward compatibility.
+- **Phase 2 — planned compatibility cleanup:** audit and merge any same-name legacy duplicates, change database uniqueness to business plus party identity, publish API deprecation guidance, and then remove the legacy `kind` column in a versioned migration.
+- **Phase 3 — payroll extension:** add an optional `EmployeeProfile` linked to a party for employee number, employment dates, department, compensation, and payroll status. Employment remains an optional capability rather than a party classification.
+- **Phase 4 — opening positions:** replace the single net opening-balance input with posted opening journal allocations so one party can independently carry opening receivable and payable positions.
+
+The **Expenses** workspace recognizes operating costs directly against an active expense account. **Paid now** debits the expense and credits Cash, Bank, or Mobile Financial Services. **Pay later** debits the expense and credits Accounts Payable; subsequent partial or final payments debit that liability and credit the selected funds account without recognizing the expense twice. Payees are selected from the shared party directory. Every posting creates an immutable journal and voucher, respects period locks and tenant boundaries, and appears in the filtered expense register and furnished PDF/CSV exports.
 
 ### Remaining MVP work
 
@@ -203,7 +210,7 @@ For frontend work, also run the project formatter, typecheck, unit tests, and a 
 
 ## Implemented API foundation
 
-The existing contacts, catalog, inventory units, stock, accounts, fiscal periods, journals, and vouchers are available under `/api/v1/`. Every request must authenticate and provide the selected tenant using the `X-Business-ID` header (or `business` query parameter). An inaccessible tenant produces the same not-found response as an unknown tenant.
+The existing parties, catalog, inventory units, stock, accounts, fiscal periods, journals, and vouchers are available under `/api/v1/`. Every request must authenticate and provide the selected tenant using the `X-Business-ID` header (or `business` query parameter). An inaccessible tenant produces the same not-found response as an unknown tenant. Party creation no longer requires `kind`; the property remains accepted and returned temporarily for backward compatibility.
 
 Inventory units are controlled master data. The Super Admin maintains the default catalog under **Administration → Default units**. The initial catalog contains piece, kilogram, gram, litre, millilitre, metre, centimetre, box, pack, dozen, pair, hour, and day; each entry can be renamed, deactivated, or supplemented by the Super Admin. Each business can optionally inherit those read-only defaults and can create its own units under **Inventory units**. Products reference an available unit rather than storing open text. The product API preserves a concise code contract such as `"unit": "kilogram"`; unknown, inactive, or cross-tenant unit codes are rejected. A business cannot disable default inheritance while one of its products still references a default unit.
 
@@ -225,7 +232,7 @@ Business Admins receive all permissions for their business. Employee roles use t
 
 Journal entries are created as drafts with nested lines and posted through `POST /api/v1/journal-entries/{id}/post/`. Sales and purchases use `/api/v1/sales/` and `/api/v1/purchases/`; each supports nested lines and a `POST /{id}/post/` action. Sales accept `discount_type` as `none`, `fixed`, or `percentage` plus a decimal `discount_value`; `subtotal`, `discount_amount`, and `total` are calculated read-only fields. Purchases reject discount values. Posted documents expose `paid_amount`, `balance_due`, and `payment_status`; sales include immutable `payments`, while purchases include immutable `supplier_payments`. Immediate sales expose `money_receipt_number`. Credit invoices accept `POST /api/v1/sales/{id}/receive-payment/`, and payable purchases accept `POST /api/v1/purchases/{id}/pay-supplier/`; both accept `payment_account`, `amount`, `payment_date`, optional `notes`, and an optional reusable `idempotency_key`. Posting is atomic and idempotent, rejects invalid stock or locked periods, and posted financial history cannot be edited or deleted. Stock movements are append-only through the API. The server-rendered interface uses the same tenant and permission policy.
 
-Sales, purchases, customer receipts, supplier payments, and stock movements receive an immutable tenant-wide automatic number when first saved. The format is `YYNNNNNN`: the transaction year followed by a six-digit sequence, such as `26000001`. These records share the same business/year counter so a number identifies exactly one operational record; each business has an independent counter, and the sequence restarts at `000001` in January. The two-digit year format supports transaction years 2000–2099. Client-supplied numbers are ignored, while the optional stock movement source reference remains available separately. Register screens, search, APIs, CSV exports, PDFs, journals, and vouchers use the generated number.
+Sales, purchases, receipts, outgoing payments, and stock movements receive an immutable tenant-wide automatic number when first saved. The format is `YYNNNNNN`: the transaction year followed by a six-digit sequence, such as `26000001`. These records share the same business/year counter so a number identifies exactly one operational record; each business has an independent counter, and the sequence restarts at `000001` in January. The two-digit year format supports transaction years 2000–2099. Client-supplied numbers are ignored, while the optional stock movement source reference remains available separately. Register screens, search, APIs, CSV exports, PDFs, journals, and vouchers use the generated number.
 
 Balance set-offs are listed, retrieved, and created at `/api/v1/balance-setoffs/`. Creation accepts a `party`, `setoff_date`, equal `sale_allocations` and `purchase_allocations` arrays of `{document_id, amount}`, optional `notes`, and an optional reusable `idempotency_key`.
 
@@ -235,7 +242,7 @@ Returns, multi-invoice payment splitting, advanced financial reports, and the op
 
 ## Current user interface
 
-The authenticated Django interface is the operational delivery surface for the implemented foundation. It includes a responsive permission-aware navigation shell, business switching, overview metrics, searchable and paginated contacts/catalog tables, append-only stock movement entry, sales and purchase workflows, and accounting workflows for chart templates, tenant accounts, editable fiscal periods, draft journals, posting, and vouchers. The top-level **Payments** workspace lists open customer receivables and supplier payables with direct **Receive** and **Pay** actions plus recent settlement history. The **Reports** area is ordered as Contact directory, Invoice register, Money receipt register, Transaction register, and Account activity summary. The transaction register provides a tenant-scoped chronological view of every posted sale, purchase, receipt, payment, expense, contra, return, and manual journal for any selected date range; voucher-backed rows use the document face value while debit and credit columns preserve the complete journal audit totals. Each tabular report supports CSV and furnished PDF export. Accounts Receivable collections produce receipt PDFs; Accounts Payable settlements produce printable payment vouchers. Open period boundaries may be changed only when they remain non-overlapping and include every existing entry; locked boundaries remain protected until the period is reopened.
+The authenticated Django interface is the operational delivery surface for the implemented foundation. It includes a responsive permission-aware navigation shell, business switching, overview metrics, searchable and paginated party/catalog tables, append-only stock movement entry, sales and purchase workflows, and accounting workflows for chart templates, tenant accounts, editable fiscal periods, draft journals, posting, and vouchers. The top-level **Payments** workspace lists open receivables and payables with direct **Receive** and **Pay** actions plus recent settlement history. The **Reports** area is ordered as Party directory, Invoice register, Money receipt register, Transaction register, and Account activity summary. The transaction register provides a tenant-scoped chronological view of every posted sale, purchase, receipt, payment, expense, contra, return, and manual journal for any selected date range; voucher-backed rows use the document face value while debit and credit columns preserve the complete journal audit totals. Each tabular report supports CSV and furnished PDF export. Accounts Receivable collections produce receipt PDFs; Accounts Payable settlements produce printable payment vouchers. Open period boundaries may be changed only when they remain non-overlapping and include every existing entry; locked boundaries remain protected until the period is reopened.
 
 Every select list in the authenticated application is progressively enhanced as a searchable autocomplete combobox. It preserves the native select as the submitted field, supports keyboard and pointer operation, and also applies to line-item selectors added dynamically after page load. If JavaScript is unavailable, the original native select remains usable.
 

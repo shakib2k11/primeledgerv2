@@ -403,7 +403,7 @@ def purchase_pay_supplier(request, pk):
         return redirect("purchase-detail", pk=purchase.pk)
     if not purchase.can_pay_supplier:
         detail = (
-            _("This supplier invoice is already paid in full.")
+            _("This payable is already paid in full.")
             if purchase.balance_due <= 0
             else _("This purchase was not posted to Accounts Payable.")
         )
@@ -440,7 +440,7 @@ def purchase_pay_supplier(request, pk):
         else:
             messages.success(
                 request,
-                _("Supplier payment %(payment)s posted with voucher %(voucher)s.")
+                _("Payment %(payment)s posted with voucher %(voucher)s.")
                 % {"payment": payment.number, "voucher": payment.voucher.number},
             )
             return redirect("purchase-detail", pk=purchase.pk)
@@ -538,8 +538,6 @@ def payment_center(request):
             key=lambda item: parties[item].name.lower(),
         ):
             party = parties[party_id]
-            if party.kind != party.Kind.BOTH:
-                continue
             receivable = receivable_by_party[party_id]
             payable = payable_by_party[party_id]
             setoff_options.append({
@@ -616,13 +614,13 @@ def balance_setoff_create(request, party_id):
     for permission in (SALES_POST, PURCHASES_POST, ACCOUNTING_POST):
         authorize(request.user, business, permission)
     party = get_object_or_404(
-        business.parties.filter(is_active=True, kind="both"), pk=party_id
+        business.parties.filter(is_active=True), pk=party_id
     )
     sales, purchases = _open_setoff_documents(business, party)
     if not sales or not purchases:
         messages.error(
             request,
-            _("This contact needs both an open receivable and an open payable before a set-off can be posted."),
+            _("This party needs both an open receivable and an open payable before a set-off can be posted."),
         )
         return redirect("payment-center")
     form = BalanceSetoffForm(
@@ -1085,7 +1083,7 @@ def document_pdf(request, kind):
             headings = (
                 (PAGE_MARGIN, "Number", "left"),
                 (119, "Date", "left"),
-                (191, "Customer", "left"),
+                (191, "Party", "left"),
                 (388, "Status", "left"),
                 (455, "Subtotal", "right"),
                 (505, "Discount", "right"),
@@ -1095,7 +1093,7 @@ def document_pdf(request, kind):
             headings = (
                 (PAGE_MARGIN, "Number", "left"),
                 (125, "Date", "left"),
-                (205, "Supplier", "left"),
+                (205, "Party", "left"),
                 (420, "Status", "left"),
                 (width - PAGE_MARGIN, f"Total ({business.currency})", "right"),
             )

@@ -398,7 +398,7 @@ class TradeWorkflowTests(TestCase):
 
         form_page = self.client.get(reverse("sale-receive-payment", args=[document.pk]))
         self.assertEqual(form_page.status_code, 200)
-        self.assertContains(form_page, "Receive customer payment")
+        self.assertContains(form_page, "Receive payment")
         self.assertContains(form_page, "Outstanding balance: 240.00 BDT")
 
         response = self.client.post(
@@ -563,11 +563,11 @@ class TradeWorkflowTests(TestCase):
         purchase.refresh_from_db()
 
         center = self.client.get(reverse("payment-center"))
-        self.assertContains(center, "Open supplier payables")
+        self.assertContains(center, "Open payables")
         self.assertContains(center, purchase.number)
         self.assertContains(center, "Pay")
         detail = self.client.get(reverse("purchase-detail", args=[purchase.pk]))
-        self.assertContains(detail, "Pay supplier")
+        self.assertContains(detail, "Record payment")
         form_page = self.client.get(reverse("purchase-pay-supplier", args=[purchase.pk]))
         self.assertContains(form_page, "Record funds paid")
 
@@ -791,12 +791,14 @@ class TradeWorkflowTests(TestCase):
             self.assertContains(response, "Accounting handled automatically")
             self.assertNotContains(response, 'name="debit_account"')
             self.assertNotContains(response, 'name="credit_account"')
+        self.assertContains(self.client.get(reverse("sale-create")), self.supplier.name)
+        self.assertContains(self.client.get(reverse("purchase-create")), self.customer.name)
 
         response = self.client.post(
             reverse("purchase-create"),
             {
                 "document_date": "2026-08-26",
-                "party": self.supplier.pk,
+                "party": self.customer.pk,
                 "period": self.period.pk,
                 "settlement_method": "cash",
                 "funds_account": self.cash.pk,
@@ -812,6 +814,7 @@ class TradeWorkflowTests(TestCase):
             },
         )
         purchase = TradeDocument.objects.get(kind=TradeDocument.Kind.PURCHASE)
+        self.assertEqual(purchase.party, self.customer)
         self.assertRedirects(response, reverse("purchase-detail", args=[purchase.pk]))
         self.assertEqual(purchase.debit_account, self.inventory)
         self.assertEqual(purchase.credit_account, self.cash)
@@ -974,6 +977,8 @@ class TradeWorkflowTests(TestCase):
 
 
     def test_mutual_balances_can_be_set_off_atomically_and_printed(self):
+        self.both_party.kind = Party.Kind.CUSTOMER
+        self.both_party.save(update_fields=["kind"])
         purchase = self.make_document(
             TradeDocument.Kind.PURCHASE, quantity="2.000", party=self.both_party
         )
@@ -1195,8 +1200,8 @@ class TradeTenantApiTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("payment-center"), {"business": self.business.pk})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Open customer receivables")
-        self.assertNotContains(response, "Open supplier payables")
+        self.assertContains(response, "Open receivables")
+        self.assertNotContains(response, "Open payables")
         self.assertEqual(
             self.client.get(
                 reverse("purchase-pay-supplier", args=[999]),

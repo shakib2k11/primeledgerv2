@@ -186,9 +186,9 @@ def party_create(request):
         party = form.save(commit=False)
         party.business = business
         party.save()
-        messages.success(request, _("Contact saved successfully."))
+        messages.success(request, _("Party saved successfully."))
         return redirect("party-list")
-    return render(request, "core/party-form.html", {"business": business, "form": form, "title": _("Add contact")})
+    return render(request, "core/party-form.html", {"business": business, "form": form, "title": _("Add party")})
 
 
 @login_required

@@ -123,7 +123,6 @@ def _pdf_header(
 
 def _contact_filters(request, business):
     query = request.GET.get("q", "").strip()
-    kind = request.GET.get("kind", "")
     state = request.GET.get("state", "active")
     as_of = _parse_date(request.GET.get("as_of", "")) or timezone.localdate()
     contacts = Party.objects.filter(business=business)
@@ -132,16 +131,6 @@ def _contact_filters(request, business):
     elif state != "all":
         state = "active"
         contacts = contacts.filter(is_active=True)
-    if kind == Party.Kind.CUSTOMER:
-        contacts = contacts.filter(kind__in=[Party.Kind.CUSTOMER, Party.Kind.BOTH])
-    elif kind == Party.Kind.SUPPLIER:
-        contacts = contacts.filter(kind__in=[Party.Kind.SUPPLIER, Party.Kind.BOTH])
-    elif kind == Party.Kind.BOTH:
-        contacts = contacts.filter(kind=Party.Kind.BOTH)
-    elif kind == Party.Kind.EMPLOYEE:
-        contacts = contacts.filter(kind=Party.Kind.EMPLOYEE)
-    else:
-        kind = ""
     if query:
         contacts = contacts.filter(
             Q(name__icontains=query)
@@ -184,7 +173,6 @@ def _contact_filters(request, business):
         party.closing_balance_position = closing.position
     return contacts, {
         "query": query,
-        "kind": kind,
         "state": state,
         "as_of": as_of,
     }
@@ -724,16 +712,16 @@ def contact_report_csv(request):
         return render(request, "core/no-business.html")
     contacts, filters = _contact_filters(request, business)
     response = HttpResponse(content_type="text/csv")
-    response["Content-Disposition"] = 'attachment; filename="contact-directory.csv"'
+    response["Content-Disposition"] = 'attachment; filename="party-directory.csv"'
     writer = csv.writer(response)
     _write_csv_heading(
         writer,
         business,
-        "Contact directory",
+        "Party directory",
         as_of=filters["as_of"],
     )
     writer.writerow([
-        _("Name"), _("Type"), _("Phone"), _("Email"), _("Address"), _("Opening balance"),
+        _("Name"), _("Phone"), _("Email"), _("Address"), _("Opening balance"),
         _("Opening position"), _("Closing balance"), _("Closing position"), _("Status"),
     ])
     wrote_row = False
@@ -746,7 +734,6 @@ def contact_report_csv(request):
         )
         writer.writerow([
             party.name,
-            party.get_kind_display(),
             party.phone,
             party.email,
             party.address,
@@ -771,13 +758,13 @@ def contact_report_pdf(request):
     buffer = BytesIO()
     page_size = landscape(A4)
     pdf = canvas.Canvas(buffer, pagesize=page_size, pageCompression=1)
-    pdf.setTitle(_("%(business)s contact directory") % {"business": business.name})
+    pdf.setTitle(_("%(business)s party directory") % {"business": business.name})
     pdf.setAuthor("Prime Ledger")
     page_number = 1
     width, height, y = _pdf_header(
         pdf,
         business,
-        "Contact directory",
+        "Party directory",
         date_range=f"As of {filters['as_of']:%d %b %Y}",
         page_size=page_size,
         page_number=page_number,
@@ -788,9 +775,8 @@ def contact_report_pdf(request):
             pdf,
             current_y,
             (
-                (PAGE_MARGIN, "Contact", "left"),
-                (200, "Relationship", "left"),
-                (300, "Phone", "left"),
+                (PAGE_MARGIN, "Party", "left"),
+                (270, "Phone", "left"),
                 (500, _("Opening (%(currency)s)") % {"currency": business.currency}, "right"),
                 (610, _("Closing (%(currency)s)") % {"currency": business.currency}, "right"),
                 (650, "Position", "left"),
@@ -804,7 +790,7 @@ def contact_report_pdf(request):
         y = draw_empty_state(
             pdf,
             y,
-            _("No contacts match the selected filters"),
+            _("No parties match the selected filters"),
             width=width,
         )
     for row_index, party in enumerate(rows):
@@ -815,7 +801,7 @@ def contact_report_pdf(request):
             _width, _height, y = _pdf_header(
                 pdf,
                 business,
-                "Contact directory",
+                "Party directory",
                 date_range=f"As of {filters['as_of']:%d %b %Y}",
                 page_size=page_size,
                 page_number=page_number,
@@ -838,8 +824,7 @@ def contact_report_pdf(request):
         pdf.drawString(PAGE_MARGIN, y, clean_text(party.name, 31))
         pdf.setFillColor(INK_SOFT)
         pdf.setFont(pdf_font(), 7.5)
-        pdf.drawString(200, y, clean_text(party.get_kind_display(), 20))
-        pdf.drawString(300, y, party.phone[:18] or "-")
+        pdf.drawString(270, y, party.phone[:22] or "-")
         pdf.setFillColor(INK)
         pdf.setFont(pdf_font(bold=True), 7.5)
         pdf.drawRightString(500, y, f"{party.opening_balance:.2f}")
@@ -855,7 +840,7 @@ def contact_report_pdf(request):
     draw_page_footer(pdf, width=width, page_number=page_number)
     pdf.save()
     response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
-    response["Content-Disposition"] = 'attachment; filename="contact-directory.pdf"'
+    response["Content-Disposition"] = 'attachment; filename="party-directory.pdf"'
     return response
 
 
@@ -906,7 +891,7 @@ def invoice_report_csv(request):
     writer = csv.writer(response)
     _write_csv_heading(writer, business, "Invoice register", date_range=date_range)
     writer.writerow([
-        _("Invoice number"), _("Date"), _("Customer"), _("Fiscal period"),
+        _("Invoice number"), _("Date"), _("Party"), _("Fiscal period"),
         f"Subtotal ({business.currency})", f"Discount ({business.currency})",
         f"Total ({business.currency})", f"Paid ({business.currency})",
         f"Balance ({business.currency})", _("Payment status"),
@@ -961,7 +946,7 @@ def invoice_report_pdf(request):
             (
                 (PAGE_MARGIN, "Invoice", "left"),
                 (120, "Date", "left"),
-                (205, "Customer", "left"),
+                (205, "Party", "left"),
                 (500, _("Total (%(currency)s)") % {"currency": business.currency}, "right"),
                 (590, "Paid", "right"),
                 (680, "Balance", "right"),

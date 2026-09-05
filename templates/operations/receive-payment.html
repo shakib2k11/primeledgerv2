@@ -4,7 +4,7 @@
 <header class="page-heading compact">
   <div>
     <div class="breadcrumb"><a href="{% url 'payment-center' %}">{% translate "Payments" %}</a><span>/</span><a href="{% url 'sale-detail' sale.pk %}">{{ sale.number }}</a><span>/</span><span>{% translate "Receive payment" %}</span></div>
-    <h1>{% translate "Receive customer payment" %}</h1>
+    <h1>{% translate "Receive payment" %}</h1>
     <p class="lede">{% translate "Allocate a payment from" %} {{ sale.party.name }} {% translate "directly to this invoice." %}</p>
   </div>
 </header>

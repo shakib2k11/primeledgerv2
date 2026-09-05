@@ -60,6 +60,13 @@ class TenantViewSetMixin:
 
 
 class PartySerializer(serializers.ModelSerializer):
+    kind = serializers.ChoiceField(
+        choices=Party.Kind.choices,
+        required=False,
+        default=Party.Kind.BOTH,
+        help_text=_("Deprecated compatibility field; all active parties may buy, sell, or receive payments."),
+    )
+
     class Meta:
         model = Party
         exclude = ["business"]
@@ -68,12 +75,11 @@ class PartySerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         business = self.context["business"]
         name = attrs.get("name", getattr(self.instance, "name", ""))
-        kind = attrs.get("kind", getattr(self.instance, "kind", None))
-        duplicate = Party.objects.filter(business=business, name__iexact=name, kind=kind)
+        duplicate = Party.objects.filter(business=business, name__iexact=name)
         if self.instance:
             duplicate = duplicate.exclude(pk=self.instance.pk)
         if duplicate.exists():
-            raise serializers.ValidationError(_("A contact with this name and type already exists."))
+            raise serializers.ValidationError(_("A party with this name already exists."))
         return attrs
 
     def create(self, validated_data):

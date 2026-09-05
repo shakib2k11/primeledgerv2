@@ -317,7 +317,7 @@ class BusinessReportTests(TestCase):
         JournalEntry.objects.filter(pk=hidden_activity.pk).update(posted=True)
         self.client.login(username="report-owner", password="password")
 
-    def test_contact_report_filters_types_and_is_tenant_scoped(self):
+    def test_party_report_ignores_legacy_types_and_is_tenant_scoped(self):
         response = self.client.get(reverse("contact-report"), {"kind": "customer"})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="report-summary"')
@@ -327,7 +327,7 @@ class BusinessReportTests(TestCase):
         self.assertContains(response, "Combined Trading")
         self.assertContains(response, "Closing position")
         self.assertContains(response, "150.00")
-        self.assertNotContains(response, "Bengal Supplier")
+        self.assertContains(response, "Bengal Supplier")
         self.assertNotContains(response, "Hidden Contact")
 
         csv_response = self.client.get(
@@ -336,7 +336,7 @@ class BusinessReportTests(TestCase):
         )
         self.assertContains(csv_response, "Bengal Supplier")
         self.assertContains(csv_response, "Combined Trading")
-        self.assertNotContains(csv_response, "Amina Customer")
+        self.assertContains(csv_response, "Amina Customer")
         self.assertNotContains(csv_response, "Hidden Contact")
         self.assertContains(csv_response, "Closing balance")
         pdf_response = self.client.get(reverse("contact-report-pdf"))
@@ -486,7 +486,7 @@ class BusinessReportTests(TestCase):
         response = self.client.get(reverse("report-index"))
         content = response.content.decode()
         names = [
-            "Contact directory",
+            "Party directory",
             "Invoice register",
             "Money receipt register",
             "Transaction register",
@@ -501,7 +501,7 @@ class BusinessReportTests(TestCase):
         index = self.client.get(reverse("report-index"))
         self.assertEqual(index.status_code, 200)
         self.assertContains(index, 'class="panel data-panel report-library"')
-        self.assertContains(index, "Contact directory")
+        self.assertContains(index, "Party directory")
         self.assertNotContains(index, "Invoice register")
         self.assertEqual(self.client.get(reverse("contact-report")).status_code, 200)
         self.assertEqual(self.client.get(reverse("invoice-report")).status_code, 403)

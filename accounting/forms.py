@@ -189,7 +189,7 @@ class ExpenseRecordForm(forms.Form):
     description = forms.CharField(max_length=255)
     external_reference = forms.CharField(
         max_length=80, required=False,
-        help_text=_("Bill, payroll, lease, or supplier reference."),
+        help_text=_("Bill, payroll, lease, or party reference."),
     )
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
     confirm = forms.BooleanField(

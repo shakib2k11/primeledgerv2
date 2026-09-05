@@ -1,10 +1,10 @@
-# 
-#: core/report_views.py:395 core/report_views.py:576
+#
+#: core/report_views.py:383 core/report_views.py:564
 msgid ""
 msgstr ""
 "Project-Id-Version: Prime Ledger\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-04 09:27+0600\n"
+"POT-Creation-Date: 2026-09-04 21:38+0600\n"
 "PO-Revision-Date: 2026-08-31 00:15+0600\n"
 "Last-Translator: Prime Ledger\n"
 "Language-Team: Bangla\n"
@@ -85,8 +85,8 @@ msgid "Required when the expense will be paid later."
 msgstr "প্রয়োজন পরে যখন খরচ পরিশোধ করা হবে."
 
 #: accounting/forms.py:192
-msgid "Bill, payroll, lease, or supplier reference."
-msgstr "বিল, বেতন, ইজারা, বা সরবরাহকারী রেফারেন্স।"
+msgid "Bill, payroll, lease, or party reference."
+msgstr "বিল, বেতন, ইজারা বা পার্টির রেফারেন্স।"
 
 #: accounting/forms.py:196
 msgid "I confirm this expense should be posted to the ledger."
@@ -105,7 +105,7 @@ msgid "I confirm this payment should be posted."
 msgstr "আমি নিশ্চিত যে এই অর্থ প্রদান পোস্ট করা উচিত."
 
 #: accounting/forms.py:271 accounting/infrastructure/repositories.py:377
-#: operations/api.py:115 operations/forms.py:253 operations/forms.py:312
+#: operations/api.py:115 operations/forms.py:246 operations/forms.py:305
 msgid "Payment date cannot be in the future."
 msgstr "পেমেন্ট তারিখ ভবিষ্যতে হতে পারে না."
 
@@ -189,8 +189,8 @@ msgstr "অর্থপ্রদানের তারিখ কভার কর
 msgid "Payment amount must be greater than zero."
 msgstr "অর্থপ্রদানের পরিমাণ অবশ্যই শূন্যের বেশি হতে হবে।"
 
-#: accounting/infrastructure/repositories.py:417 operations/forms.py:260
-#: operations/forms.py:319 operations/infrastructure/repositories.py:346
+#: accounting/infrastructure/repositories.py:417 operations/forms.py:253
+#: operations/forms.py:312 operations/infrastructure/repositories.py:346
 #: operations/infrastructure/repositories.py:552
 #, python-format
 msgid "Payment cannot exceed the remaining balance of %(balance).2f."
@@ -218,15 +218,15 @@ msgstr "আয়"
 msgid "Expense"
 msgstr "ব্যয়"
 
-#: accounting/models.py:20 operations/forms.py:46
+#: accounting/models.py:20 operations/forms.py:41
 msgid "Cash"
 msgstr "নগদ"
 
-#: accounting/models.py:21 operations/forms.py:47
+#: accounting/models.py:21 operations/forms.py:42
 msgid "Bank"
 msgstr "ব্যাংক"
 
-#: accounting/models.py:22 operations/forms.py:48
+#: accounting/models.py:22 operations/forms.py:43
 msgid "Mobile financial services"
 msgstr "মোবাইল আর্থিক সেবা"
 
@@ -433,7 +433,7 @@ msgstr "টাকা রসিদ মুছে ফেলা যাবে না.
 msgid "Paid now"
 msgstr "এখন পরিশোধিত"
 
-#: accounting/models.py:439 operations/forms.py:43
+#: accounting/models.py:439 operations/forms.py:38
 msgid "Pay later"
 msgstr "পরে পরিশোধযোগ্য"
 
@@ -515,7 +515,7 @@ msgstr "একটি খরচ প্রদানের জন্য একট�
 msgid "Expense payment and voucher amounts must match."
 msgstr "খরচ পেমেন্ট এবং ভাউচারের পরিমাণ অবশ্যই মিলবে।"
 
-#: accounting/models.py:665 operations/models.py:486
+#: accounting/models.py:665 operations/models.py:477
 msgid "Payment voucher must use the payment journal entry."
 msgstr "পেমেন্ট ভাউচার অবশ্যই পেমেন্ট জার্নাল এন্ট্রি ব্যবহার করতে হবে।"
 
@@ -666,7 +666,7 @@ msgstr "খসড়া জার্নাল সফলভাবে সংরক
 msgid "Posted or locked journal entries cannot be edited."
 msgstr "পোস্ট করা বা লক করা জার্নাল এন্ট্রি সম্পাদনা করা যাবে না।"
 
-#: accounting/views.py:342 operations/views.py:980
+#: accounting/views.py:342 operations/views.py:978
 msgid "Confirm posting before continuing."
 msgstr "চালিয়ে যাওয়ার আগে পোস্টিং নিশ্চিত করুন।"
 
@@ -707,7 +707,7 @@ msgstr "ভাউচার %(voucher)s সহ পোস্ট করা খর�
 msgid "This expense has no outstanding payable balance."
 msgstr "এই খরচের কোন বকেয়া প্রদেয় ব্যালেন্স নেই।"
 
-#: accounting/views.py:558
+#: accounting/views.py:558 operations/views.py:443
 #, python-format
 msgid "Payment %(payment)s posted with voucher %(voucher)s."
 msgstr "পেমেন্ট %(payment)s ভাউচার %(voucher)s সহ পোস্ট করা হয়েছে।"
@@ -716,13 +716,13 @@ msgstr "পেমেন্ট %(payment)s ভাউচার %(voucher)s সহ 
 msgid "Expense register"
 msgstr "ব্যয় রেজিস্টার"
 
-#: accounting/views.py:578 core/views.py:406 operations/views.py:1035
-#: operations/views.py:1040 templates/core/stock-movement-list.html:4
+#: accounting/views.py:578 core/views.py:406 operations/views.py:1033
+#: operations/views.py:1038 templates/core/stock-movement-list.html:4
 msgid "Number"
 msgstr "সংখ্যা"
 
-#: accounting/views.py:578 core/report_views.py:375 core/report_views.py:909
-#: core/report_views.py:1070 operations/views.py:1035 operations/views.py:1040
+#: accounting/views.py:578 core/report_views.py:363 core/report_views.py:894
+#: core/report_views.py:1055 operations/views.py:1033 operations/views.py:1038
 #: templates/accounting/expense-detail.html:6
 #: templates/accounting/expense-list.html:8
 #: templates/accounting/journal-list.html:3
@@ -748,7 +748,7 @@ msgstr "তারিখ"
 msgid "Category"
 msgstr "শ্রেণী"
 
-#: accounting/views.py:578 accounting/views.py:714 core/report_views.py:376
+#: accounting/views.py:578 accounting/views.py:714 core/report_views.py:364
 #: templates/accounting/expense-form.html:6
 #: templates/accounting/journal-form.html:14
 #: templates/operations/document-detail.html:45
@@ -804,8 +804,8 @@ msgstr "পরিশোধিত"
 msgid "Outstanding"
 msgstr "অসামান্য"
 
-#: accounting/views.py:579 core/report_views.py:553 core/report_views.py:737
-#: operations/views.py:1035 operations/views.py:1040
+#: accounting/views.py:579 core/report_views.py:541 core/report_views.py:725
+#: operations/views.py:1033 operations/views.py:1038
 #: templates/accounting/account-list.html:3
 #: templates/accounting/expense-list.html:8
 #: templates/accounting/journal-list.html:3
@@ -815,8 +815,8 @@ msgstr "অসামান্য"
 #: templates/core/settings/tenant-detail.html:4
 #: templates/core/settings/tenant-list.html:3 templates/core/unit-list.html:4
 #: templates/operations/document-list.html:4
-#: templates/reports/contact-report.html:26
-#: templates/reports/contact-report.html:32
+#: templates/reports/contact-report.html:25
+#: templates/reports/contact-report.html:31
 #: templates/reports/invoice-report.html:31
 msgid "Status"
 msgstr "অবস্থা"
@@ -829,8 +829,8 @@ msgstr "বিভাগ/প্রদানকারী"
 msgid "No expenses matched the selected filters."
 msgstr "নির্বাচিত ফিল্টারগুলির সাথে কোনো খরচ মেলেনি৷"
 
-#: accounting/views.py:667 core/report_views.py:1221 operations/models.py:21
-#: operations/views.py:724 operations/views.py:830
+#: accounting/views.py:667 core/report_views.py:1206 operations/models.py:21
+#: operations/views.py:722 operations/views.py:828
 #: templates/accounting/journal-detail.html:2
 #: templates/accounting/journal-list.html:3
 #: templates/accounting/overview.html:4
@@ -870,8 +870,8 @@ msgstr "/ দায় থেকে পরিশোধ করা হয়েছ
 msgid "External reference"
 msgstr "বাহ্যিক রেফারেন্স"
 
-#: accounting/views.py:718 accounting/views.py:740 core/report_views.py:375
-#: core/report_views.py:1070 templates/operations/balance-setoff-detail.html:7
+#: accounting/views.py:718 accounting/views.py:740 core/report_views.py:363
+#: core/report_views.py:1055 templates/operations/balance-setoff-detail.html:7
 msgid "Journal reference"
 msgstr "জার্নাল রেফারেন্স"
 
@@ -879,7 +879,7 @@ msgstr "জার্নাল রেফারেন্স"
 msgid "Expense payment voucher"
 msgstr "ব্যয় পরিশোধ ভাউচার"
 
-#: accounting/views.py:738 operations/views.py:870
+#: accounting/views.py:738 operations/views.py:868
 #: templates/accounting/expense-detail.html:5
 #: templates/accounting/expense-detail.html:6
 #: templates/operations/document-detail.html:110
@@ -890,16 +890,24 @@ msgstr "থেকে প্রদান করা হয়"
 msgid "Allocation"
 msgstr "বরাদ্দ"
 
-#: accounting/views.py:741 core/report_views.py:1070
+#: accounting/views.py:741 core/report_views.py:1055
 #: templates/accounting/expense-payment-form.html:3
 msgid "Notes"
 msgstr "নোট"
 
-#: core/api.py:76 core/forms.py:67
-msgid "A contact with this name and type already exists."
-msgstr "এই নাম এবং প্রকারের সাথে একটি পরিচিতি ইতিমধ্যেই বিদ্যমান৷"
+#: core/api.py:67
+msgid ""
+"Deprecated compatibility field; all active parties may buy, sell, or receive "
+"payments."
+msgstr ""
+"সামঞ্জস্যের জন্য রাখা পুরোনো ফিল্ড; সব সক্রিয় পার্টি ক্রয়, বিক্রয় বা পেমেন্টে ব্যবহার "
+"করা যাবে।"
 
-#: core/api.py:110 core/forms.py:91
+#: core/api.py:82 core/forms.py:66 core/models.py:134
+msgid "A party with this name already exists."
+msgstr "এই নামে একটি পার্টি ইতিমধ্যে রয়েছে।"
+
+#: core/api.py:116 core/forms.py:90
 msgid "This SKU is already in use in this business."
 msgstr "এই SKU ইতিমধ্যেই এই ব্যবসায় ব্যবহার করা হচ্ছে৷"
 
@@ -936,27 +944,27 @@ msgstr "এই ব্যবহারকারীর নামের একজন
 msgid "The passwords do not match."
 msgstr "পাসওয়ার্ড মেলে না."
 
-#: core/forms.py:84
+#: core/forms.py:83
 msgid "Select a unit"
 msgstr "একটি ইউনিট নির্বাচন করুন"
 
-#: core/forms.py:103
+#: core/forms.py:102
 msgid "Stable lowercase identifier, for example carton or kilogram."
 msgstr "স্থিতিশীল ছোট হাতের শনাক্তকারী, উদাহরণস্বরূপ শক্ত কাগজ বা কিলোগ্রাম।"
 
-#: core/forms.py:104
+#: core/forms.py:103
 msgid "Short display label, for example ctn or kg."
 msgstr "সংক্ষিপ্ত প্রদর্শন লেবেল, উদাহরণস্বরূপ ctn বা kg."
 
-#: core/forms.py:107
+#: core/forms.py:106
 msgid "This code is locked because products already use the unit."
 msgstr "এই কোডটি লক করা হয়েছে কারণ পণ্যগুলি ইতিমধ্যেই ইউনিট ব্যবহার করছে৷"
 
-#: core/forms.py:118
+#: core/forms.py:117
 msgid "Use Prime Ledger default units"
 msgstr "প্রাইম লেজার ডিফল্ট ইউনিট ব্যবহার করুন"
 
-#: core/forms.py:127 core/models.py:132
+#: core/forms.py:126
 msgid ""
 "Reassign products using default units to business-owned units before "
 "disabling inheritance."
@@ -964,14 +972,14 @@ msgstr ""
 "উত্তরাধিকার নিষ্ক্রিয় করার আগে ব্যবসার মালিকানাধীন ইউনিটগুলিতে ডিফল্ট ইউনিট ব্যবহার "
 "করে পণ্যগুলি পুনরায় বরাদ্দ করুন।"
 
-#: core/forms.py:141 core/views.py:407
+#: core/forms.py:140 core/views.py:407
 #: templates/core/stock-movement-list.html:4
 msgid "Source reference"
 msgstr "উৎস রেফারেন্স"
 
-#: core/forms.py:142
-msgid "Optional supplier, adjustment, or source document reference."
-msgstr "ঐচ্ছিক সরবরাহকারী, সমন্বয়, বা উৎস নথি রেফারেন্স."
+#: core/forms.py:141
+msgid "Optional party, adjustment, or source document reference."
+msgstr "ঐচ্ছিক পার্টি, সমন্বয় বা উৎস নথির রেফারেন্স।"
 
 #: core/infrastructure/numbering.py:27
 #, python-format
@@ -1002,15 +1010,11 @@ msgstr "ইংরেজি"
 msgid "বাংলা"
 msgstr "বাংলা"
 
-#: core/models.py:105 core/report_views.py:909
-#: templates/operations/payment-center.html:31
-#: templates/operations/payment-center.html:52
-#: templates/reports/invoice-report.html:31
+#: core/models.py:105
 msgid "Customer"
 msgstr "গ্রাহক"
 
-#: core/models.py:106 templates/operations/payment-center.html:44
-#: templates/operations/payment-center.html:53
+#: core/models.py:106
 msgid "Supplier"
 msgstr "সরবরাহকারী"
 
@@ -1071,7 +1075,7 @@ msgid "PRIME LEDGER REPORT"
 msgstr "প্রাইম লেজার রিপোর্ট"
 
 #: core/pdf.py:92 core/report_views.py:97 core/views.py:403
-#: operations/views.py:1017
+#: operations/views.py:1015
 msgid "Generated"
 msgstr "তৈরির তারিখ"
 
@@ -1110,248 +1114,251 @@ msgid "As of"
 msgstr "তারিখ পর্যন্ত"
 
 #: core/report_views.py:96 core/views.py:402 core/views.py:447
-#: operations/views.py:1078 templates/core/dashboard.html:4
+#: operations/views.py:1076 templates/core/dashboard.html:4
 #: templates/core/settings/tenant-list.html:3
 msgid "Currency"
 msgstr "মুদ্রা"
 
-#: core/report_views.py:375 templates/reports/transaction-register.html:10
+#: core/report_views.py:363 templates/reports/transaction-register.html:10
 msgid "Transaction type"
 msgstr "লেনদেনের ধরন"
 
-#: core/report_views.py:375
+#: core/report_views.py:363
 msgid "Document number"
 msgstr "নথি নম্বর"
 
-#: core/report_views.py:376 operations/views.py:1035 operations/views.py:1040
-#: templates/accounting/journal-form.html:14
-#: templates/accounting/voucher-list.html:2
+#: core/report_views.py:364 core/report_views.py:894 operations/views.py:1033
+#: operations/views.py:1038 templates/accounting/journal-form.html:14
+#: templates/accounting/voucher-list.html:2 templates/core/party-list.html:4
+#: templates/operations/balance-setoff-detail.html:7
 #: templates/operations/document-detail.html:31
+#: templates/operations/document-detail.html:102
 #: templates/operations/document-list.html:4
+#: templates/operations/payment-center.html:21
+#: templates/operations/payment-center.html:31
+#: templates/operations/payment-center.html:37
+#: templates/operations/payment-center.html:44
+#: templates/operations/payment-center.html:52
+#: templates/operations/payment-center.html:53
+#: templates/reports/contact-report.html:31
+#: templates/reports/invoice-report.html:31
 #: templates/reports/transaction-register.html:12
 msgid "Party"
 msgstr "পার্টি"
 
-#: core/report_views.py:392
+#: core/report_views.py:380
 msgid "No posted transactions match the selected filters."
 msgstr "কোনো পোস্ট করা লেনদেন নির্বাচিত ফিল্টারের সাথে মেলে না।"
 
-#: core/report_views.py:395 core/report_views.py:576 core/report_views.py:687
-#: operations/views.py:1293
+#: core/report_views.py:383 core/report_views.py:564 core/report_views.py:675
+#: operations/views.py:1291
 msgid "TOTAL"
 msgstr "মোট"
 
-#: core/report_views.py:415
+#: core/report_views.py:403
 #, python-format
 msgid "%(business)s transaction register"
 msgstr "%(business)s লেনদেন রেজিস্টার"
 
-#: core/report_views.py:442
+#: core/report_views.py:430
 msgid "No posted transactions match the selected filters"
 msgstr "কোনো পোস্ট করা লেনদেন নির্বাচিত ফিল্টারের সাথে মেলে না"
 
-#: core/report_views.py:498
+#: core/report_views.py:486
 #, python-format
 msgid "TOTAL · %(count)s TRANSACTIONS"
 msgstr "মোট · %(count)s লেনদেন"
 
-#: core/report_views.py:553
+#: core/report_views.py:541
 msgid "Account code"
 msgstr "হিসাব কোড"
 
-#: core/report_views.py:553
+#: core/report_views.py:541
 msgid "Account name"
 msgstr "হিসাবের নাম"
 
-#: core/report_views.py:553
+#: core/report_views.py:541
 msgid "Account type"
 msgstr "হিসাবের ধরন"
 
-#: core/report_views.py:602
+#: core/report_views.py:590
 #, python-format
 msgid "%(business)s account activity summary"
 msgstr "%(business)s অ্যাকাউন্ট কার্যকলাপের সারাংশ"
 
-#: core/report_views.py:633
+#: core/report_views.py:621
 msgid "No accounts are configured"
 msgstr "কোন অ্যাকাউন্ট কনফিগার করা হয় না"
 
-#: core/report_views.py:736
+#: core/report_views.py:724
 msgid "Name"
 msgstr "নাম"
 
-#: core/report_views.py:736 templates/accounting/voucher-list.html:2
-#: templates/core/party-list.html:4
-#: templates/reports/account-activity-report.html:35
-#: templates/reports/transaction-register.html:12
-msgid "Type"
-msgstr "ধরন"
-
-#: core/report_views.py:736 templates/core/party-list.html:4
-#: templates/reports/contact-report.html:32
+#: core/report_views.py:724 templates/core/party-list.html:4
+#: templates/reports/contact-report.html:31
 msgid "Phone"
 msgstr "ফোন"
 
-#: core/report_views.py:736
+#: core/report_views.py:724
 msgid "Email"
 msgstr "ইমেইল"
 
-#: core/report_views.py:736 templates/reports/contact-report.html:32
+#: core/report_views.py:724 templates/reports/contact-report.html:31
 msgid "Address"
 msgstr "ঠিকানা"
 
-#: core/report_views.py:736 templates/core/party-list.html:4
+#: core/report_views.py:724 templates/core/party-list.html:4
 msgid "Opening balance"
 msgstr "প্রারম্ভিক ব্যালেন্স"
 
-#: core/report_views.py:737 templates/core/party-form.html:1
+#: core/report_views.py:725 templates/core/party-form.html:1
 msgid "Opening position"
 msgstr "খোলার অবস্থান"
 
-#: core/report_views.py:737
+#: core/report_views.py:725
 msgid "Closing balance"
 msgstr "সমাপনী জের"
 
-#: core/report_views.py:737 templates/reports/contact-report.html:32
+#: core/report_views.py:725 templates/reports/contact-report.html:31
 msgid "Closing position"
 msgstr "সমাপনী অবস্থান"
 
-#: core/report_views.py:760 core/report_views.py:930 core/report_views.py:1085
-#: core/views.py:421 operations/views.py:1048
+#: core/report_views.py:747 core/report_views.py:915 core/report_views.py:1070
+#: core/views.py:421 operations/views.py:1046
 msgid "No records for the selected filters."
 msgstr "নির্বাচিত ফিল্টারগুলির জন্য কোন রেকর্ড নেই৷"
 
-#: core/report_views.py:774
+#: core/report_views.py:761
 #, python-format
-msgid "%(business)s contact directory"
-msgstr "%(business)s যোগাযোগ ডিরেক্টরি"
+msgid "%(business)s party directory"
+msgstr "%(business)s পার্টি তালিকা"
 
-#: core/report_views.py:794
+#: core/report_views.py:780
 #, python-format
 msgid "Opening (%(currency)s)"
 msgstr "খোলা হচ্ছে (%(currency)s)"
 
-#: core/report_views.py:795
+#: core/report_views.py:781
 #, python-format
 msgid "Closing (%(currency)s)"
 msgstr "বন্ধ (%(currency)s)"
 
-#: core/report_views.py:807
-msgid "No contacts match the selected filters"
-msgstr "নির্বাচিত ফিল্টারের সাথে কোনো পরিচিতি মেলে না"
+#: core/report_views.py:793
+msgid "No parties match the selected filters"
+msgstr "নির্বাচিত ফিল্টারের সাথে কোনো পার্টি মেলে না"
 
-#: core/report_views.py:909
+#: core/report_views.py:894
 msgid "Invoice number"
 msgstr "চালান নম্বর"
 
-#: core/report_views.py:909 templates/accounting/journal-detail.html:3
+#: core/report_views.py:894 templates/accounting/journal-detail.html:3
 #: templates/operations/document-detail.html:32
 msgid "Fiscal period"
 msgstr "অর্থবছরের সময়কাল"
 
-#: core/report_views.py:912 templates/operations/document-detail.html:74
+#: core/report_views.py:897 templates/operations/document-detail.html:74
 msgid "Payment status"
 msgstr "পেমেন্ট স্ট্যাটাস"
 
-#: core/report_views.py:945
+#: core/report_views.py:930
 #, python-format
 msgid "%(business)s invoice register"
 msgstr "%(business)s চালান রেজিস্টার"
 
-#: core/report_views.py:965
+#: core/report_views.py:950
 #, python-format
 msgid "Total (%(currency)s)"
 msgstr "মোট (%(currency)s)"
 
-#: core/report_views.py:978
+#: core/report_views.py:963
 msgid "No posted invoices match the selected filters"
 msgstr "কোনো পোস্ট করা ইনভয়েস নির্বাচিত ফিল্টারের সাথে মেলে না"
 
-#: core/report_views.py:1070
+#: core/report_views.py:1055
 msgid "Receipt number"
 msgstr "রসিদ নম্বর"
 
-#: core/report_views.py:1070 templates/reports/money-receipt-report.html:31
+#: core/report_views.py:1055 templates/reports/money-receipt-report.html:31
 msgid "Received from"
 msgstr "থেকে প্রাপ্ত"
 
-#: core/report_views.py:1070 core/report_views.py:1258
+#: core/report_views.py:1055 core/report_views.py:1243
 #: templates/reports/money-receipt-report.html:31
 msgid "Payment account"
 msgstr "পেমেন্ট অ্যাকাউন্ট"
 
-#: core/report_views.py:1070 templates/reports/money-receipt-report.html:31
+#: core/report_views.py:1055 templates/reports/money-receipt-report.html:31
 msgid "Source"
 msgstr "উৎস"
 
-#: core/report_views.py:1099
+#: core/report_views.py:1084
 #, python-format
 msgid "%(business)s money receipt register"
 msgstr "%(business)s অর্থ রসিদ রেজিস্টার"
 
-#: core/report_views.py:1118
+#: core/report_views.py:1103
 msgid "Source / journal"
 msgstr "সূত্র/জার্নাল"
 
-#: core/report_views.py:1119
+#: core/report_views.py:1104
 #, python-format
 msgid "Amount (%(currency)s)"
 msgstr "পরিমাণ (%(currency)s)"
 
-#: core/report_views.py:1129
+#: core/report_views.py:1114
 msgid "No money receipts match the selected filters"
 msgstr "নির্বাচিত ফিল্টারগুলির সাথে কোনো অর্থের রসিদ মেলে না"
 
-#: core/report_views.py:1213
+#: core/report_views.py:1198
 #, python-format
 msgid "Money receipt %(number)s"
 msgstr "অর্থ রসিদ %(number)s"
 
-#: core/report_views.py:1218
+#: core/report_views.py:1203
 msgid "Money receipt"
 msgstr "টাকার রসিদ"
 
-#: core/report_views.py:1229
+#: core/report_views.py:1214
 msgid "RECEIVED FROM"
 msgstr "প্রদানকারী"
 
-#: core/report_views.py:1247
+#: core/report_views.py:1232
 msgid "AMOUNT RECEIVED"
 msgstr "প্রাপ্ত পরিমাণ"
 
-#: core/report_views.py:1253
+#: core/report_views.py:1238
 msgid "RECEIVED"
 msgstr "প্রাপ্ত"
 
-#: core/report_views.py:1258
+#: core/report_views.py:1243
 msgid "Not mapped"
 msgstr "ম্যাপ করা হয়নি"
 
-#: core/report_views.py:1259 operations/views.py:872
+#: core/report_views.py:1244 operations/views.py:870
 msgid "Accounting reference"
 msgstr "অ্যাকাউন্টিং রেফারেন্স"
 
-#: core/report_views.py:1260
+#: core/report_views.py:1245
 msgid "Receipt source"
 msgstr "প্রাপ্তি উৎস"
 
-#: core/report_views.py:1264
+#: core/report_views.py:1249
 msgid "RECEIPT DETAILS"
 msgstr "প্রাপ্তির বিবরণ"
 
-#: core/report_views.py:1281 operations/views.py:894 operations/views.py:1320
+#: core/report_views.py:1266 operations/views.py:892 operations/views.py:1318
 msgid "NOTES"
 msgstr "মন্তব্য"
 
-#: core/report_views.py:1296 templates/operations/document-detail.html:110
+#: core/report_views.py:1281 templates/operations/document-detail.html:110
 msgid "Received by"
 msgstr "দ্বারা গৃহীত"
 
-#: core/report_views.py:1297
+#: core/report_views.py:1282
 msgid "Authorised signature"
 msgstr "অনুমোদিত স্বাক্ষর"
 
-#: core/report_views.py:1302
+#: core/report_views.py:1287
 msgid ""
 "Generated from an immutable posted voucher / No manual alteration permitted"
 msgstr ""
@@ -1436,12 +1443,12 @@ msgid "Template account saved."
 msgstr "টেমপ্লেট অ্যাকাউন্ট সংরক্ষিত।"
 
 #: core/views.py:189
-msgid "Contact saved successfully."
-msgstr "পরিচিতি সফলভাবে সংরক্ষণ করা হয়েছে৷"
+msgid "Party saved successfully."
+msgstr "পার্টি সফলভাবে সংরক্ষণ করা হয়েছে।"
 
 #: core/views.py:191 templates/core/party-list.html:2
-msgid "Add contact"
-msgstr "পরিচিতি যোগ করুন"
+msgid "Add party"
+msgstr "পার্টি যোগ করুন"
 
 #: core/views.py:236
 msgid "Inventory item saved successfully."
@@ -1561,12 +1568,12 @@ msgstr ""
 msgid "Record movement"
 msgstr "রেকর্ড আন্দোলন"
 
-#: operations/api.py:198 operations/forms.py:382
+#: operations/api.py:198 operations/forms.py:375
 #: operations/infrastructure/repositories.py:696
 msgid "Set-off date cannot be in the future."
 msgstr "সেট অফ তারিখ ভবিষ্যতে হতে পারে না."
 
-#: operations/api.py:206 operations/forms.py:404
+#: operations/api.py:206 operations/forms.py:397
 msgid "Allocate at least one receivable invoice and one payable purchase."
 msgstr "কমপক্ষে একটি প্রাপ্য চালান এবং একটি প্রদেয় ক্রয় বরাদ্দ করুন।"
 
@@ -1574,115 +1581,111 @@ msgstr "কমপক্ষে একটি প্রাপ্য চালান
 msgid "Each document may be allocated only once."
 msgstr "প্রতিটি নথি শুধুমাত্র একবার বরাদ্দ করা যেতে পারে."
 
-#: operations/api.py:216 operations/forms.py:408
-#: operations/infrastructure/repositories.py:744
+#: operations/api.py:216 operations/forms.py:401
+#: operations/infrastructure/repositories.py:743
 msgid "Receivable and payable allocation totals must be equal."
 msgstr "প্রাপ্য এবং প্রদেয় বরাদ্দ মোট সমান হতে হবে।"
 
-#: operations/api.py:262
+#: operations/api.py:257
 msgid "Posted documents cannot be edited."
 msgstr "পোস্ট করা নথি সম্পাদনা করা যাবে না."
 
-#: operations/api.py:265 operations/api.py:338 operations/forms.py:182
+#: operations/api.py:260 operations/api.py:333 operations/forms.py:175
 msgid "Add at least one product or service line."
 msgstr "অন্তত একটি পণ্য বা পরিষেবা লাইন যোগ করুন."
 
-#: operations/forms.py:43
+#: operations/forms.py:38
 msgid "Receive later"
 msgstr "পরে গ্রহণ"
 
-#: operations/forms.py:51 templates/operations/document-detail.html:33
-msgid "Customer payment"
-msgstr "গ্রাহকের পরিশোধ"
+#: operations/forms.py:45 templates/operations/document-detail.html:33
+msgid "Payment arrangement"
+msgstr "পরিশোধের ব্যবস্থা"
 
-#: operations/forms.py:51 templates/operations/document-detail.html:33
-msgid "Supplier payment"
-msgstr "সরবরাহকারীকে পরিশোধ"
-
-#: operations/forms.py:54
+#: operations/forms.py:47
 msgid "Choose Receive later for an Accounts Receivable sale."
 msgstr "বাকিতে বিক্রয়ের জন্য ‘পরে গ্রহণ’ নির্বাচন করুন; এটি প্রাপ্য হিসাবে থাকবে।"
 
-#: operations/forms.py:56
+#: operations/forms.py:49
 msgid "Choose Pay later for an Accounts Payable purchase."
 msgstr "বাকিতে ক্রয়ের জন্য ‘পরে পরিশোধ’ নির্বাচন করুন; এটি প্রদেয় হিসাবে থাকবে।"
 
-#: operations/forms.py:59
+#: operations/forms.py:52
 msgid "Deposit into"
 msgstr "যে হিসাবে জমা হবে"
 
-#: operations/forms.py:59 templates/accounting/expense-form.html:6
+#: operations/forms.py:52 templates/accounting/expense-form.html:6
 #: templates/accounting/expense-payment-form.html:3
 msgid "Pay from"
 msgstr "থেকে অর্থ প্রদান করুন"
 
-#: operations/forms.py:62
+#: operations/forms.py:55
 msgid "Shown only for cash, bank, or mobile settlement."
 msgstr "নগদ, ব্যাংক বা মোবাইল মাধ্যমে পরিশোধের ক্ষেত্রেই এটি দেখানো হবে।"
 
-#: operations/forms.py:84
+#: operations/forms.py:77
 msgid "Apply one discount to the complete sale."
 msgstr "সম্পূর্ণ বিক্রয়ে একটি ছাড় প্রয়োগ করুন।"
 
-#: operations/forms.py:86
+#: operations/forms.py:79
 msgid "Enter a currency amount or percentage according to the selected type."
 msgstr "নির্বাচিত প্রকার অনুসারে একটি মুদ্রার পরিমাণ বা শতাংশ লিখুন।"
 
-#: operations/forms.py:99
+#: operations/forms.py:92
 msgid "Select the cash, bank, or mobile account."
 msgstr "নগদ, ব্যাংক বা মোবাইল হিসাব নির্বাচন করুন।"
 
-#: operations/forms.py:103
+#: operations/forms.py:96
 msgid "The selected account does not match the payment method."
 msgstr "নির্বাচিত অ্যাকাউন্টটি পরিশোধের মাধ্যমের সঙ্গে মেলে না।"
 
-#: operations/forms.py:123
+#: operations/forms.py:116
 msgid ""
 "The chart of accounts is missing a required system account. Apply the "
 "default chart template or ask an administrator."
 msgstr ""
-"চার্ট অব অ্যাকাউন্টসে প্রয়োজনীয় সিস্টেম অ্যাকাউন্ট নেই। ডিফল্ট চার্ট "
-"টেমপ্লেট প্রয়োগ করুন অথবা প্রশাসকের সহায়তা নিন।"
+"চার্ট অব অ্যাকাউন্টসে প্রয়োজনীয় সিস্টেম অ্যাকাউন্ট নেই। ডিফল্ট চার্ট টেমপ্লেট প্রয়োগ "
+"করুন অথবা প্রশাসকের সহায়তা নিন।"
 
-#: operations/forms.py:147 operations/models.py:109
+#: operations/forms.py:140 operations/models.py:100
 msgid "Percentage discount must be less than 100."
 msgstr "শতাংশ ছাড় 100 এর কম হতে হবে।"
 
-#: operations/forms.py:192
+#: operations/forms.py:185
 msgid "The document total must be greater than zero."
 msgstr "নথির মোট সংখ্যা অবশ্যই শূন্যের বেশি হতে হবে।"
 
-#: operations/forms.py:224
+#: operations/forms.py:217
 msgid "I confirm that this payment has been received and should be posted."
 msgstr "আমি নিশ্চিত করি যে এই অর্থ প্রদান করা হয়েছে এবং পোস্ট করা উচিত।"
 
-#: operations/forms.py:244
+#: operations/forms.py:237
 #, python-format
 msgid "Outstanding balance: %(balance).2f %(currency)s."
 msgstr "বকেয়া জের: %(balance).2f %(currency)s।"
 
-#: operations/forms.py:247
+#: operations/forms.py:240
 msgid ""
 "The selected Cash, Bank, or Mobile Financial Services account will be "
 "debited."
 msgstr "নির্বাচিত নগদ, ব্যাঙ্ক, বা মোবাইল আর্থিক পরিষেবা অ্যাকাউন্ট ডেবিট করা হবে।"
 
-#: operations/forms.py:283
-msgid "I confirm that this supplier payment should be posted."
-msgstr "আমি নিশ্চিত করি যে এই সরবরাহকারীর অর্থপ্রদান পোস্ট করা উচিত।"
+#: operations/forms.py:276
+msgid "I confirm that this payment should be posted."
+msgstr "আমি নিশ্চিত করছি যে এই পেমেন্টটি পোস্ট করা হবে।"
 
-#: operations/forms.py:303
+#: operations/forms.py:296
 #, python-format
 msgid "Outstanding payable: %(balance).2f %(currency)s."
 msgstr "বকেয়া প্রদেয়: %(balance).2f %(currency)s।"
 
-#: operations/forms.py:306
+#: operations/forms.py:299
 msgid ""
 "The selected Cash, Bank, or Mobile Financial Services account will be "
 "credited."
 msgstr "নির্বাচিত নগদ, ব্যাঙ্ক, বা মোবাইল আর্থিক পরিষেবার অ্যাকাউন্টে জমা করা হবে৷"
 
-#: operations/forms.py:336
+#: operations/forms.py:329
 msgid "I confirm these receivable and payable allocations should be posted."
 msgstr "আমি নিশ্চিত করি এই প্রাপ্য এবং প্রদেয় বরাদ্দ পোস্ট করা উচিত।"
 
@@ -1757,76 +1760,76 @@ msgstr ""
 "পারে না।"
 
 #: operations/infrastructure/repositories.py:549 operations/views.py:406
-msgid "This supplier invoice is already paid in full."
-msgstr "এই সরবরাহকারী চালান ইতিমধ্যে সম্পূর্ণরূপে প্রদান করা হয়েছে."
+msgid "This payable is already paid in full."
+msgstr "এই প্রদেয় সম্পূর্ণ পরিশোধ করা হয়েছে।"
 
 #: operations/infrastructure/repositories.py:664
 msgid "This set-off request key was already used with different details."
 msgstr "এই সেট-অফ রিকোয়েস্ট কী ইতিমধ্যেই বিভিন্ন বিবরণের সাথে ব্যবহার করা হয়েছে।"
 
-#: operations/infrastructure/repositories.py:706
-msgid "Select an active contact classified as Customer and Supplier."
-msgstr "গ্রাহক এবং সরবরাহকারী হিসাবে শ্রেণীবদ্ধ একটি সক্রিয় পরিচিতি নির্বাচন করুন।"
+#: operations/infrastructure/repositories.py:705
+msgid "Select an active party belonging to this business."
+msgstr "এই ব্যবসার একটি সক্রিয় পার্টি নির্বাচন করুন।"
 
-#: operations/infrastructure/repositories.py:726
+#: operations/infrastructure/repositories.py:725
 msgid "Select at least one receivable invoice and one payable purchase."
 msgstr "কমপক্ষে একটি গ্রহণযোগ্য চালান এবং একটি প্রদেয় ক্রয় নির্বাচন করুন৷"
 
-#: operations/infrastructure/repositories.py:734
+#: operations/infrastructure/repositories.py:733
 msgid "Each document may be allocated only once per set-off."
 msgstr "প্রতিটি নথি প্রতি সেট অফ শুধুমাত্র একবার বরাদ্দ করা যেতে পারে."
 
-#: operations/infrastructure/repositories.py:736
+#: operations/infrastructure/repositories.py:735
 msgid "Every set-off allocation must be greater than zero."
 msgstr "প্রতিটি সেট-অফ বরাদ্দ অবশ্যই শূন্যের বেশি হতে হবে।"
 
-#: operations/infrastructure/repositories.py:753
+#: operations/infrastructure/repositories.py:752
 msgid "No fiscal period covers the set-off date."
 msgstr "কোনো আর্থিক সময়কাল সেট-অফ তারিখ কভার করে না।"
 
-#: operations/infrastructure/repositories.py:755
+#: operations/infrastructure/repositories.py:754
 msgid "The fiscal period covering the set-off date is locked."
 msgstr "সেট-অফ তারিখ কভার করা আর্থিক সময়কাল লক করা হয়েছে।"
 
-#: operations/infrastructure/repositories.py:772
+#: operations/infrastructure/repositories.py:771
 msgid ""
 "Active Accounts Receivable and Accounts Payable posting accounts are "
 "required."
 msgstr "সক্রিয় অ্যাকাউন্ট প্রাপ্য এবং অ্যাকাউন্ট প্রদেয় পোস্টিং অ্যাকাউন্ট প্রয়োজন।"
 
-#: operations/infrastructure/repositories.py:803
+#: operations/infrastructure/repositories.py:802
 msgid ""
 "Every receivable allocation must reference an open posted invoice for this "
-"contact."
+"party."
 msgstr ""
-"প্রতিটি প্রাপ্য বরাদ্দ অবশ্যই এই পরিচিতির জন্য একটি খোলা পোস্ট করা চালান উল্লেখ করতে "
+"প্রতিটি প্রাপ্য বরাদ্দ অবশ্যই এই পার্টির জন্য একটি খোলা পোস্ট করা চালান উল্লেখ করতে "
 "হবে।"
 
-#: operations/infrastructure/repositories.py:807
+#: operations/infrastructure/repositories.py:806
 msgid ""
 "Every payable allocation must reference an open posted purchase for this "
-"contact."
+"party."
 msgstr ""
-"প্রতিটি প্রদেয় বরাদ্দ অবশ্যই এই পরিচিতির জন্য একটি খোলা পোস্ট করা ক্রয়ের উল্লেখ করতে "
+"প্রতিটি প্রদেয় বরাদ্দ অবশ্যই এই পার্টির জন্য একটি খোলা পোস্ট করা ক্রয়ের উল্লেখ করতে "
 "হবে।"
 
-#: operations/infrastructure/repositories.py:812
+#: operations/infrastructure/repositories.py:811
 #, python-format
 msgid "Set-off date cannot precede sale %(number)s."
 msgstr "%(number)s বিক্রয়ের আগে সেট-অফ তারিখ হতে পারে না।"
 
-#: operations/infrastructure/repositories.py:817
+#: operations/infrastructure/repositories.py:816
 #, python-format
 msgid "Allocation cannot exceed sale %(number)s's balance of %(balance).2f."
 msgstr ""
 "বরাদ্দ বিক্রয় %(number)s-এর %(balance).2f অবশিষ্ট জের অতিক্রম করতে পারবে না।"
 
-#: operations/infrastructure/repositories.py:823
+#: operations/infrastructure/repositories.py:822
 #, python-format
 msgid "Set-off date cannot precede purchase %(number)s."
 msgstr "%(number)s ক্রয়ের আগে সেট-অফ তারিখ হতে পারে না।"
 
-#: operations/infrastructure/repositories.py:828
+#: operations/infrastructure/repositories.py:827
 #, python-format
 msgid ""
 "Allocation cannot exceed purchase %(number)s's balance of %(balance).2f."
@@ -1879,219 +1882,209 @@ msgstr "নথির তারিখ অবশ্যই তার আর্থ�
 msgid "Debit and credit accounts must be different."
 msgstr "ডেবিট এবং ক্রেডিট অ্যাকাউন্ট আলাদা হতে হবে।"
 
-#: operations/models.py:95
-msgid "Sales require a customer and purchases require a supplier."
-msgstr "বিক্রয়ের জন্য একজন গ্রাহকের প্রয়োজন এবং ক্রয়ের জন্য একজন সরবরাহকারীর প্রয়োজন।"
-
-#: operations/models.py:102
+#: operations/models.py:93
 msgid "Discounts are available on sales only."
 msgstr "ডিসকাউন্ট শুধুমাত্র বিক্রয় পাওয়া যায়."
 
-#: operations/models.py:104
+#: operations/models.py:95
 msgid "Choose a discount type before entering a value."
 msgstr "একটি মান প্রবেশ করার আগে একটি ছাড়ের ধরন চয়ন করুন৷"
 
-#: operations/models.py:130
+#: operations/models.py:121
 msgid "Discount must be less than the sale subtotal."
 msgstr "ডিসকাউন্ট অবশ্যই বিক্রয় সাবটোটালের চেয়ে কম হতে হবে।"
 
-#: operations/models.py:209
+#: operations/models.py:200
 msgid "The automatic document number cannot be changed."
 msgstr "স্বয়ংক্রিয় নথি নম্বর পরিবর্তন করা যাবে না."
 
-#: operations/models.py:211
+#: operations/models.py:202
 msgid "Posted sales and purchases cannot be edited."
 msgstr "পোস্ট বিক্রয় এবং ক্রয় সম্পাদনা করা যাবে না."
 
-#: operations/models.py:216
+#: operations/models.py:207
 msgid "Posted sales and purchases cannot be deleted."
 msgstr "পোস্ট করা বিক্রয় এবং ক্রয় মুছে ফেলা যাবে না."
 
-#: operations/models.py:218
+#: operations/models.py:209
 msgid "Documents in a locked fiscal period cannot be deleted."
 msgstr "একটি লক করা আর্থিক সময়ের নথি মুছে ফেলা যাবে না."
 
-#: operations/models.py:238
+#: operations/models.py:229
 msgid "Line product must belong to the document business."
 msgstr "লাইন পণ্য নথি ব্যবসার অন্তর্গত হতে হবে."
 
-#: operations/models.py:242
+#: operations/models.py:233
 msgid "Lines in posted documents cannot be edited."
 msgstr "পোস্ট করা নথিতে লাইন সম্পাদনা করা যাবে না।"
 
-#: operations/models.py:250
+#: operations/models.py:241
 msgid "Lines in posted documents cannot be deleted."
 msgstr "পোস্ট করা নথিতে লাইন মুছে ফেলা যাবে না।"
 
-#: operations/models.py:329 operations/models.py:452
+#: operations/models.py:320 operations/models.py:443
 msgid "The payment number must contain exactly eight digits."
 msgstr "পেমেন্ট নম্বরে অবশ্যই আটটি সংখ্যা থাকতে হবে।"
 
-#: operations/models.py:334 operations/models.py:457
+#: operations/models.py:325 operations/models.py:448
 msgid "Payment relationships must belong to the same business."
 msgstr "অর্থপ্রদানের সম্পর্ক অবশ্যই একই ব্যবসার অন্তর্গত।"
 
-#: operations/models.py:339
+#: operations/models.py:330
 msgid "Payments require a posted sale."
 msgstr "পেমেন্ট একটি পোস্ট বিক্রয় প্রয়োজন."
 
-#: operations/models.py:345
+#: operations/models.py:336
 msgid "Payments can be allocated only to a sale posted to Accounts Receivable."
 msgstr ""
 "অর্থপ্রদান শুধুমাত্র অ্যাকাউন্ট গ্রহণযোগ্য পোস্ট করা একটি বিক্রয় বরাদ্দ করা যেতে পারে."
 
-#: operations/models.py:349 operations/models.py:472
+#: operations/models.py:340 operations/models.py:463
 msgid ""
 "Payment account must be mapped as Cash, Bank, or Mobile Financial Services."
 msgstr ""
 "অর্থপ্রদান অ্যাকাউন্ট অবশ্যই নগদ, ব্যাঙ্ক বা মোবাইল আর্থিক পরিষেবা হিসাবে ম্যাপ করা "
 "উচিত৷"
 
-#: operations/models.py:352
+#: operations/models.py:343
 msgid "A sale payment requires a posted journal entry."
 msgstr "একটি বিক্রয় অর্থপ্রদানের জন্য একটি পোস্ট করা জার্নাল এন্ট্রি প্রয়োজন৷"
 
-#: operations/models.py:355
+#: operations/models.py:346
 msgid "Payment and money receipt amounts must match."
 msgstr "অর্থপ্রদান এবং অর্থ প্রাপ্তির পরিমাণ অবশ্যই মিলবে।"
 
-#: operations/models.py:357
-msgid "Payment and money receipt customers must match."
-msgstr "অর্থপ্রদান এবং অর্থ রসিদ গ্রাহকদের অবশ্যই মিলবে।"
+#: operations/models.py:348
+msgid "Payment and money receipt parties must match."
+msgstr "পেমেন্ট এবং মানি রসিদের পার্টি একই হতে হবে।"
 
-#: operations/models.py:359
+#: operations/models.py:350
 msgid "Payment and money receipt accounts must match."
 msgstr "অর্থপ্রদান এবং অর্থ রসিদ অ্যাকাউন্ট অবশ্যই মিলবে।"
 
-#: operations/models.py:361
+#: operations/models.py:352
 msgid "Payment and money receipt dates must match."
 msgstr "অর্থপ্রদান এবং অর্থ প্রাপ্তির তারিখ অবশ্যই মিলবে।"
 
-#: operations/models.py:366
+#: operations/models.py:357
 msgid "Payment receipt must use the payment journal entry."
 msgstr "পেমেন্ট রসিদ অবশ্যই পেমেন্ট জার্নাল এন্ট্রি ব্যবহার করতে হবে।"
 
-#: operations/models.py:370
+#: operations/models.py:361
 msgid "Posted sale payments cannot be edited."
 msgstr "পোস্ট করা বিক্রয় পেমেন্ট সম্পাদনা করা যাবে না."
 
-#: operations/models.py:374
+#: operations/models.py:365
 msgid "Posted sale payments cannot be deleted."
 msgstr "পোস্ট করা বিক্রয় পেমেন্ট মুছে ফেলা যাবে না."
 
-#: operations/models.py:462
-msgid "Supplier payments require a posted purchase."
-msgstr "সরবরাহকারী অর্থপ্রদানের জন্য একটি পোস্ট করা ক্রয় প্রয়োজন।"
+#: operations/models.py:453
+msgid "Payments require a posted purchase."
+msgstr "পেমেন্টের জন্য একটি পোস্ট করা ক্রয় প্রয়োজন।"
 
-#: operations/models.py:468
+#: operations/models.py:459
 msgid ""
 "Payments can be allocated only to a purchase posted to Accounts Payable."
 msgstr ""
 "অর্থপ্রদান শুধুমাত্র প্রদেয় অ্যাকাউন্টে পোস্ট করা একটি ক্রয়ের জন্য বরাদ্দ করা যেতে পারে।"
 
-#: operations/models.py:475
-msgid "A supplier payment requires a posted journal entry."
-msgstr "একটি সরবরাহকারী অর্থপ্রদানের জন্য একটি পোস্ট করা জার্নাল এন্ট্রি প্রয়োজন।"
+#: operations/models.py:466
+msgid "A purchase payment requires a posted journal entry."
+msgstr "ক্রয় পেমেন্টের জন্য পোস্ট করা জার্নাল এন্ট্রি প্রয়োজন।"
 
-#: operations/models.py:478
-msgid "Supplier payment requires a payment voucher."
-msgstr "সরবরাহকারীর পেমেন্টের জন্য একটি পেমেন্ট ভাউচার প্রয়োজন।"
+#: operations/models.py:469
+msgid "Purchase payment requires a payment voucher."
+msgstr "ক্রয় পেমেন্টের জন্য একটি পেমেন্ট ভাউচার প্রয়োজন।"
 
-#: operations/models.py:480
+#: operations/models.py:471
 msgid "Payment and voucher amounts must match."
 msgstr "পেমেন্ট এবং ভাউচারের পরিমাণ অবশ্যই মিলতে হবে।"
 
-#: operations/models.py:482
-msgid "Payment and voucher suppliers must match."
-msgstr "পেমেন্ট এবং ভাউচার সরবরাহকারী অবশ্যই মিলবে।"
+#: operations/models.py:473
+msgid "Payment and voucher parties must match."
+msgstr "পেমেন্ট এবং ভাউচারের পার্টি একই হতে হবে।"
 
-#: operations/models.py:484
+#: operations/models.py:475
 msgid "Payment and voucher dates must match."
 msgstr "পেমেন্ট এবং ভাউচারের তারিখ অবশ্যই মিলতে হবে।"
 
-#: operations/models.py:490
-msgid "Posted supplier payments cannot be edited."
-msgstr "পোস্ট করা সরবরাহকারী পেমেন্ট সম্পাদনা করা যাবে না."
+#: operations/models.py:481
+msgid "Posted purchase payments cannot be edited."
+msgstr "পোস্ট করা ক্রয় পেমেন্ট সম্পাদনা করা যাবে না।"
 
-#: operations/models.py:494
-msgid "Posted supplier payments cannot be deleted."
-msgstr "পোস্ট করা সরবরাহকারী পেমেন্ট মুছে ফেলা যাবে না."
+#: operations/models.py:485
+msgid "Posted purchase payments cannot be deleted."
+msgstr "পোস্ট করা ক্রয় পেমেন্ট মুছে ফেলা যাবে না।"
 
-#: operations/models.py:562
+#: operations/models.py:553
 msgid "The set-off number must contain exactly eight digits."
 msgstr "সেট-অফ নম্বরে অবশ্যই আটটি সংখ্যা থাকতে হবে।"
 
-#: operations/models.py:567
+#: operations/models.py:558
 msgid "Set-off relationships must belong to the same business."
 msgstr "সেট-অফ সম্পর্ক অবশ্যই একই ব্যবসার অন্তর্গত।"
 
-#: operations/models.py:570
-msgid "Balance set-off requires a contact classified as Customer and Supplier."
-msgstr ""
-"ব্যালেন্স সেট-অফের জন্য গ্রাহক এবং সরবরাহকারী হিসাবে শ্রেণীবদ্ধ একটি পরিচিতি "
-"প্রয়োজন।"
-
-#: operations/models.py:573
+#: operations/models.py:560
 msgid "A balance set-off requires a posted journal entry."
 msgstr "একটি ব্যালেন্স সেট-অফের জন্য একটি পোস্ট করা জার্নাল এন্ট্রি প্রয়োজন।"
 
-#: operations/models.py:576
+#: operations/models.py:563
 msgid "Balance set-off requires a contra voucher."
 msgstr "ব্যালেন্স সেট-অফের জন্য একটি কনট্রা ভাউচার প্রয়োজন।"
 
-#: operations/models.py:578
+#: operations/models.py:565
 msgid "Set-off and voucher totals must match."
 msgstr "সেট-অফ এবং ভাউচারের টোটাল অবশ্যই মিলতে হবে।"
 
-#: operations/models.py:580
-msgid "Set-off and voucher contacts must match."
-msgstr "সেট-অফ এবং ভাউচার পরিচিতি অবশ্যই মিলবে।"
+#: operations/models.py:567
+msgid "Set-off and voucher parties must match."
+msgstr "সেট-অফ এবং ভাউচারের পার্টি অবশ্যই মিলতে হবে।"
 
-#: operations/models.py:582
+#: operations/models.py:569
 msgid "Set-off and voucher dates must match."
 msgstr "সেট-অফ এবং ভাউচারের তারিখ অবশ্যই মিলতে হবে।"
 
-#: operations/models.py:584
+#: operations/models.py:571
 msgid "Contra voucher must use the set-off journal entry."
 msgstr "কনট্রা ভাউচার সেট-অফ জার্নাল এন্ট্রি ব্যবহার করতে হবে।"
 
-#: operations/models.py:588
+#: operations/models.py:575
 msgid "Posted balance set-offs cannot be edited."
 msgstr "পোস্ট করা ব্যালেন্স সেট-অফ সম্পাদনা করা যাবে না।"
 
-#: operations/models.py:592
+#: operations/models.py:579
 msgid "Posted balance set-offs cannot be deleted."
 msgstr "পোস্ট করা ব্যালেন্স সেট-অফ মুছে ফেলা যাবে না।"
 
-#: operations/models.py:627
+#: operations/models.py:614
 msgid "Allocated sale must belong to the set-off business."
 msgstr "বরাদ্দকৃত বিক্রয় অবশ্যই সেট-অফ ব্যবসার অন্তর্গত।"
 
-#: operations/models.py:629
-msgid "Allocated sale must belong to the set-off contact."
-msgstr "বরাদ্দকৃত বিক্রয় অবশ্যই সেট-অফ পরিচিতির অন্তর্গত।"
+#: operations/models.py:616
+msgid "Allocated sale must belong to the set-off party."
+msgstr "বরাদ্দকৃত বিক্রয় অবশ্যই সেট-অফ পার্টির অন্তর্গত।"
 
-#: operations/models.py:636
+#: operations/models.py:623
 msgid "Set-off requires a posted Accounts Receivable sale."
 msgstr "সেট-অফের জন্য একটি পোস্ট করা অ্যাকাউন্ট গ্রহণযোগ্য বিক্রয় প্রয়োজন।"
 
-#: operations/models.py:640 operations/models.py:692
+#: operations/models.py:627 operations/models.py:679
 msgid "Set-off allocations cannot be edited."
 msgstr "সেট অফ বরাদ্দ সম্পাদনা করা যাবে না."
 
-#: operations/models.py:644 operations/models.py:696
+#: operations/models.py:631 operations/models.py:683
 msgid "Set-off allocations cannot be deleted."
 msgstr "সেট-অফ বরাদ্দ মুছে ফেলা যাবে না।"
 
-#: operations/models.py:679
+#: operations/models.py:666
 msgid "Allocated purchase must belong to the set-off business."
 msgstr "বরাদ্দকৃত ক্রয় অবশ্যই সেট-অফ ব্যবসার অন্তর্গত।"
 
-#: operations/models.py:681
-msgid "Allocated purchase must belong to the set-off contact."
-msgstr "বরাদ্দকৃত ক্রয় অবশ্যই সেট-অফ পরিচিতির অন্তর্গত।"
+#: operations/models.py:668
+msgid "Allocated purchase must belong to the set-off party."
+msgstr "বরাদ্দকৃত ক্রয় অবশ্যই সেট-অফ পার্টির অন্তর্গত।"
 
-#: operations/models.py:688
+#: operations/models.py:675
 msgid "Set-off requires a posted Accounts Payable purchase."
 msgstr "সেট-অফের জন্য একটি পোস্ট করা অ্যাকাউন্ট প্রদেয় ক্রয় প্রয়োজন।"
 
@@ -2125,147 +2118,142 @@ msgstr "পেমেন্ট %(payment)s পোস্ট করা হয়ে
 msgid "This purchase was not posted to Accounts Payable."
 msgstr "এই ক্রয়টি প্রদেয় অ্যাকাউন্টে পোস্ট করা হয়নি।"
 
-#: operations/views.py:443
-#, python-format
-msgid "Supplier payment %(payment)s posted with voucher %(voucher)s."
-msgstr "সরবরাহকারী পেমেন্ট %(payment)s ভাউচার %(voucher)s সহ পোস্ট করা হয়েছে।"
-
-#: operations/views.py:625
+#: operations/views.py:623
 msgid ""
-"This contact needs both an open receivable and an open payable before a set-"
+"This party needs both an open receivable and an open payable before a set-"
 "off can be posted."
 msgstr ""
-"একটি সেট-অফ পোস্ট করার আগে এই পরিচিতিটি একটি খোলা প্রাপ্য এবং একটি খোলা প্রদেয় "
+"একটি সেট-অফ পোস্ট করার আগে এই পার্টির একটি খোলা প্রাপ্য এবং একটি খোলা প্রদেয় "
 "উভয়ই প্রয়োজন৷"
 
-#: operations/views.py:664
+#: operations/views.py:662
 #, python-format
 msgid "Set-off %(setoff)s posted with contra voucher %(voucher)s."
 msgstr "সেট-অফ %(setoff)s কনট্রা ভাউচার %(voucher)s সহ পোস্ট করা হয়েছে।"
 
-#: operations/views.py:716
+#: operations/views.py:714
 #, python-format
 msgid "Balance set-off %(number)s"
 msgstr "ব্যালেন্স সেট-অফ %(number)s"
 
-#: operations/views.py:721
+#: operations/views.py:719
 msgid "Balance set-off statement"
 msgstr "ব্যালেন্স সেট অফ স্টেটমেন্ট"
 
-#: operations/views.py:731
+#: operations/views.py:729
 msgid "CUSTOMER & SUPPLIER"
 msgstr "গ্রাহক ও সরবরাহকারী"
 
-#: operations/views.py:737
+#: operations/views.py:735
 msgid "SET-OFF AMOUNT"
 msgstr "সেট-অফ পরিমাণ"
 
-#: operations/views.py:775
+#: operations/views.py:773
 msgid "Receivable invoices cleared"
 msgstr "প্রাপ্য চালান সাফ করা হয়েছে"
 
-#: operations/views.py:776
+#: operations/views.py:774
 msgid "Payable purchases cleared"
 msgstr "প্রদেয় ক্রয় সাফ করা হয়েছে"
 
-#: operations/views.py:785
+#: operations/views.py:783
 #, python-format
 msgid "Contra voucher: %(number)s"
 msgstr "কনট্রা ভাউচার: %(number)s"
 
-#: operations/views.py:790
+#: operations/views.py:788
 #, python-format
 msgid "Journal: %(reference)s"
 msgstr "জার্নাল: %(reference)s"
 
-#: operations/views.py:795
+#: operations/views.py:793
 msgid "Accounting effect: Debit Accounts Payable / Credit Accounts Receivable"
 msgstr "অ্যাকাউন্টিং প্রভাব: প্রদেয় ডেবিট অ্যাকাউন্ট / ক্রেডিট অ্যাকাউন্ট গ্রহণযোগ্য"
 
-#: operations/views.py:822
+#: operations/views.py:820
 #, python-format
 msgid "Payment voucher %(number)s"
 msgstr "পেমেন্ট ভাউচার %(number)s"
 
-#: operations/views.py:827
+#: operations/views.py:825
 msgid "Payment voucher"
 msgstr "পেমেন্ট ভাউচার"
 
-#: operations/views.py:838
+#: operations/views.py:836
 msgid "PAID TO"
 msgstr "প্রাপক"
 
-#: operations/views.py:860
+#: operations/views.py:858
 msgid "AMOUNT PAID"
 msgstr "পরিশোধিত পরিমাণ"
 
-#: operations/views.py:866
+#: operations/views.py:864
 msgid "PAID"
 msgstr "পরিশোধিত"
 
-#: operations/views.py:871
+#: operations/views.py:869
 msgid "Purchase invoice"
 msgstr "চালান ক্রয়"
 
-#: operations/views.py:873
+#: operations/views.py:871
 msgid "Payment allocation"
 msgstr "পেমেন্ট বরাদ্দ"
 
-#: operations/views.py:877
+#: operations/views.py:875
 msgid "PAYMENT DETAILS"
 msgstr "অর্থপ্রদানের বিবরণ"
 
-#: operations/views.py:909 templates/accounting/journal-detail.html:3
+#: operations/views.py:907 templates/accounting/journal-detail.html:3
 msgid "Prepared by"
 msgstr "দ্বারা প্রস্তুত"
 
-#: operations/views.py:910
+#: operations/views.py:908
 msgid "Authorized by"
 msgstr "অনুমোদনকারী"
 
-#: operations/views.py:933
+#: operations/views.py:931
 msgid "Only drafts in an open fiscal period can be deleted."
 msgstr "শুধুমাত্র একটি খোলা আর্থিক সময়ের খসড়া মুছে ফেলা যেতে পারে।"
 
-#: operations/views.py:938
+#: operations/views.py:936
 #, python-format
 msgid "Draft %(kind)s"
 msgstr "%(kind)s খসড়া"
 
-#: operations/views.py:939
+#: operations/views.py:937
 #, python-format
 msgid "Delete %(number)s?"
 msgstr "%(number)s মুছবেন?"
 
-#: operations/views.py:944
+#: operations/views.py:942
 msgid "I understand this draft cannot be recovered."
 msgstr "আমি বুঝি এই খসড়া পুনরুদ্ধার করা যাবে না।"
 
-#: operations/views.py:945
+#: operations/views.py:943
 #, python-format
 msgid "Delete %(kind)s"
 msgstr "%(kind)s মুছুন"
 
-#: operations/views.py:950
+#: operations/views.py:948
 msgid "Confirm deletion before continuing."
 msgstr "চালিয়ে যাওয়ার আগে মুছে ফেলা নিশ্চিত করুন।"
 
-#: operations/views.py:957
+#: operations/views.py:955
 #, python-format
 msgid "Draft %(kind)s %(number)s was deleted."
 msgstr "খসড়া %(kind)s %(number)s মুছে ফেলা হয়েছে৷"
 
-#: operations/views.py:972
+#: operations/views.py:970
 #, python-format
 msgid "%(kind)s posting"
 msgstr "%(kind)s পোস্টিং"
 
-#: operations/views.py:973
+#: operations/views.py:971
 #, python-format
 msgid "Post %(number)s?"
 msgstr "পোস্ট %(number)s?"
 
-#: operations/views.py:974
+#: operations/views.py:972
 msgid ""
 "Posting creates a balanced journal, voucher, and stock movements in one "
 "transaction. It cannot be edited afterward."
@@ -2273,83 +2261,83 @@ msgstr ""
 "পোস্টিং একটি লেনদেনে একটি সুষম জার্নাল, ভাউচার এবং স্টক মুভমেন্ট তৈরি করে। পরে "
 "এডিট করা যাবে না।"
 
-#: operations/views.py:975
+#: operations/views.py:973
 msgid "I reviewed the party, accounts, products, quantities, prices, and date."
 msgstr "আমি পার্টি, অ্যাকাউন্ট, পণ্য, পরিমাণ, দাম এবং তারিখ পর্যালোচনা করেছি।"
 
-#: operations/views.py:976
+#: operations/views.py:974
 #, python-format
 msgid "Post %(kind)s"
 msgstr "পোস্ট %(kind)s"
 
-#: operations/views.py:997
+#: operations/views.py:995
 #, python-format
 msgid "%(kind)s posted successfully. Money receipt %(receipt)s is ready."
 msgstr "%(kind)s সফলভাবে পোস্ট করা হয়েছে৷ অর্থ রসিদ %(receipt)s প্রস্তুত।"
 
-#: operations/views.py:1003
+#: operations/views.py:1001
 #, python-format
 msgid "%(kind)s posted successfully."
 msgstr "%(kind)s সফলভাবে পোস্ট করা হয়েছে৷"
 
-#: operations/views.py:1063
+#: operations/views.py:1061
 #, python-format
 msgid "%(business)s %(kind)s register"
 msgstr "%(business)s %(kind)s রেজিস্টার"
 
-#: operations/views.py:1074
+#: operations/views.py:1072
 #, python-format
 msgid "%(kind)s register"
 msgstr "%(kind)s রেজিস্টার"
 
-#: operations/views.py:1077 templates/reports/money-receipt-report.html:19
+#: operations/views.py:1075 templates/reports/money-receipt-report.html:19
 msgid "Reporting period"
 msgstr "রিপোর্টিং সময়কাল"
 
-#: operations/views.py:1079
+#: operations/views.py:1077
 msgid "Tax basis"
 msgstr "ট্যাক্স ভিত্তিতে"
 
-#: operations/views.py:1079
+#: operations/views.py:1077
 msgid "Not included"
 msgstr "অন্তর্ভুক্ত নয়"
 
-#: operations/views.py:1110
+#: operations/views.py:1108
 #, python-format
 msgid "No %(kind)s records match the selected filters"
 msgstr "নির্বাচিত ফিল্টারগুলির সাথে কোন %(kind)s রেকর্ড মেলে না৷"
 
-#: operations/views.py:1199
+#: operations/views.py:1197
 msgid "Item / description"
 msgstr "আইটেম / বিবরণ"
 
-#: operations/views.py:1201
+#: operations/views.py:1199
 #, python-format
 msgid "Unit price (%(currency)s)"
 msgstr "ইউনিট মূল্য (%(currency)s)"
 
-#: operations/views.py:1202
+#: operations/views.py:1200
 #, python-format
 msgid "Line total (%(currency)s)"
 msgstr "মোট লাইন (%(currency)s)"
 
-#: operations/views.py:1213
+#: operations/views.py:1211
 msgid "BILL TO"
 msgstr "বিল প্রাপক"
 
-#: operations/views.py:1279 templates/operations/document-detail.html:89
+#: operations/views.py:1277 templates/operations/document-detail.html:89
 msgid "Subtotal"
 msgstr "সাবটোটাল"
 
-#: operations/views.py:1300
+#: operations/views.py:1298
 msgid "Amount paid"
 msgstr "পরিশোধিত পরিমাণ"
 
-#: operations/views.py:1301 templates/operations/receive-payment.html:39
+#: operations/views.py:1299 templates/operations/receive-payment.html:39
 msgid "Balance due"
 msgstr "বকেয়া ব্যালেন্স"
 
-#: operations/views.py:1328
+#: operations/views.py:1326
 msgid ""
 "Generated by Prime Ledger / Financial values shown in the stated currency"
 msgstr "উল্লিখিত মুদ্রায় দেখানো প্রাইম লেজার / আর্থিক মান দ্বারা তৈরি"
@@ -2433,8 +2421,8 @@ msgstr "ব্যবসায়িক অ্যাকাউন্ট"
 #: templates/core/settings/tenant-detail.html:4
 #: templates/core/settings/tenant-list.html:3 templates/core/unit-list.html:4
 #: templates/reports/contact-report.html:19
-#: templates/reports/contact-report.html:26
-#: templates/reports/contact-report.html:35
+#: templates/reports/contact-report.html:25
+#: templates/reports/contact-report.html:34
 msgid "Active"
 msgstr "সক্রিয়"
 
@@ -2445,8 +2433,8 @@ msgstr "সক্রিয়"
 #: templates/core/settings/tenant-detail.html:4
 #: templates/core/settings/tenant-list.html:3 templates/core/unit-list.html:4
 #: templates/reports/contact-report.html:19
-#: templates/reports/contact-report.html:26
-#: templates/reports/contact-report.html:35
+#: templates/reports/contact-report.html:25
+#: templates/reports/contact-report.html:34
 msgid "Inactive"
 msgstr "নিষ্ক্রিয়"
 
@@ -2976,7 +2964,7 @@ msgstr "অনুসন্ধান রেফারেন্স বা বিব
 
 #: templates/accounting/journal-list.html:3
 #: templates/operations/document-list.html:4
-#: templates/reports/contact-report.html:26
+#: templates/reports/contact-report.html:25
 msgid "All states"
 msgstr "সব অবস্থা"
 
@@ -3161,6 +3149,12 @@ msgid "Money receipt report"
 msgstr "অর্থ প্রাপ্তি প্রতিবেদন"
 
 #: templates/accounting/voucher-list.html:2
+#: templates/reports/account-activity-report.html:35
+#: templates/reports/transaction-register.html:12
+msgid "Type"
+msgstr "ধরন"
+
+#: templates/accounting/voucher-list.html:2
 msgid "No vouchers created"
 msgstr "কোনো ভাউচার তৈরি করা হয়নি"
 
@@ -3241,9 +3235,9 @@ msgstr "মজুত চলাচল"
 msgid "Inventory units"
 msgstr "মজুতের একক"
 
-#: templates/base.html:39
-msgid "Contacts"
-msgstr "যোগাযোগসমূহ"
+#: templates/base.html:39 templates/core/party-list.html:2
+msgid "Parties"
+msgstr "পার্টিসমূহ"
 
 #: templates/base.html:42 templates/reports/account-activity-report.html:6
 #: templates/reports/contact-report.html:6 templates/reports/index.html:4
@@ -3357,8 +3351,8 @@ msgid "Relationships"
 msgstr "সম্পর্ক"
 
 #: templates/core/dashboard.html:10
-msgid "Active customers and suppliers"
-msgstr "সক্রিয় গ্রাহক এবং সরবরাহকারী"
+msgid "Active parties"
+msgstr "সক্রিয় পার্টিসমূহ"
 
 #: templates/core/dashboard.html:11
 msgid "Awaiting review or posting"
@@ -3415,10 +3409,10 @@ msgstr "পোস্ট করার জন্য খুলুন"
 
 #: templates/core/dashboard.html:16
 msgid ""
-"Keep your catalog, contacts, and accounting controls current before "
-"recording daily activity."
+"Keep your catalog, parties, and accounting controls current before recording "
+"daily activity."
 msgstr ""
-"প্রতিদিনের কার্যকলাপ রেকর্ড করার আগে আপনার ক্যাটালগ, পরিচিতি এবং অ্যাকাউন্টিং "
+"প্রতিদিনের কার্যকলাপ রেকর্ড করার আগে আপনার ক্যাটালগ, পার্টি এবং অ্যাকাউন্টিং "
 "নিয়ন্ত্রণগুলি বর্তমান রাখুন।"
 
 #: templates/core/dashboard.html:16
@@ -3426,8 +3420,8 @@ msgid "Review accounting"
 msgstr "অ্যাকাউন্টিং পর্যালোচনা করুন"
 
 #: templates/core/dashboard.html:16
-msgid "Review contacts"
-msgstr "পরিচিতি পর্যালোচনা করুন"
+msgid "Review parties"
+msgstr "পার্টিসমূহ পর্যালোচনা করুন"
 
 #: templates/core/no-business.html:1
 msgid "No business workspace assigned"
@@ -3442,86 +3436,79 @@ msgstr ""
 "অ্যাডমিনের সঙ্গে যোগাযোগ করুন।"
 
 #: templates/core/party-form.html:1
-msgid "Create a clear customer or supplier record for"
-msgstr "জন্য একটি পরিষ্কার গ্রাহক বা সরবরাহকারী রেকর্ড তৈরি করুন"
+msgid ""
+"Create one reusable party record for any person or organisation that "
+"transacts with"
+msgstr ""
+"লেনদেনকারী যেকোনো ব্যক্তি বা প্রতিষ্ঠানের জন্য একটি পুনর্ব্যবহারযোগ্য পার্টি রেকর্ড "
+"তৈরি করুন"
 
 #: templates/core/party-form.html:1
-msgid "Save contact"
-msgstr "পরিচিতি সংরক্ষণ করুন"
+msgid "Save party"
+msgstr "পার্টি সংরক্ষণ করুন"
 
 #: templates/core/party-form.html:1
 msgid ""
-"Use the payable option when your business owes this contact. Leave it clear "
-"when the contact owes your business."
+"Use the payable option when your business owes this party. Leave it clear "
+"when the party owes your business."
 msgstr ""
-"আপনার ব্যবসার এই যোগাযোগের পাওনা যখন প্রদেয় বিকল্প ব্যবহার করুন. পরিচিতি আপনার "
-"ব্যবসার পাওনা যখন এটি পরিষ্কার ছেড়ে দিন।"
+"ব্যবসা এই পার্টির কাছে ঋণী হলে প্রদেয় বিকল্পটি ব্যবহার করুন। পার্টি ব্যবসার কাছে ঋণী "
+"হলে বিকল্পটি খালি রাখুন।"
 
 #: templates/core/party-list.html:1
-msgid "Contacts | Prime Ledger"
-msgstr "যোগাযোগসমূহ | প্রাইম লেজার"
+msgid "Parties | Prime Ledger"
+msgstr "পার্টিসমূহ | প্রাইম লেজার"
 
 #: templates/core/party-list.html:2
-msgid "Customers &amp; suppliers"
-msgstr "গ্রাহক ও সরবরাহকারী"
+msgid ""
+"Every person or organisation the business transacts with, in one directory."
+msgstr "ব্যবসার সঙ্গে লেনদেনকারী প্রত্যেক ব্যক্তি ও প্রতিষ্ঠান এক তালিকায়।"
 
 #: templates/core/party-list.html:2
-msgid "The people and organisations your business transacts with."
-msgstr "আপনার ব্যবসার সাথে লেনদেন করে এমন ব্যক্তি এবং সংস্থা।"
-
-#: templates/core/party-list.html:2
-msgid "Contact report"
-msgstr "যোগাযোগ রিপোর্ট"
+msgid "Party report"
+msgstr "পার্টি প্রতিবেদন"
 
 #: templates/core/party-list.html:3
 msgid "Search name, phone, or email"
 msgstr "নাম, ফোন বা ইমেল অনুসন্ধান করুন"
 
 #: templates/core/party-list.html:3
-msgid "Search contacts"
-msgstr "পরিচিতি অনুসন্ধান করুন"
+msgid "Search parties"
+msgstr "পার্টি খুঁজুন"
 
 #: templates/core/party-list.html:3
 msgid "record"
 msgstr "রেকর্ড"
 
 #: templates/core/party-list.html:4
-#: templates/operations/balance-setoff-detail.html:7
-#: templates/operations/document-detail.html:102
-#: templates/operations/payment-center.html:37
-#: templates/reports/contact-report.html:32
-msgid "Contact"
-msgstr "যোগাযোগ"
-
-#: templates/core/party-list.html:4
 msgid "Position"
 msgstr "অবস্থান"
 
-#: templates/core/party-list.html:4 templates/reports/contact-report.html:35
+#: templates/core/party-list.html:4 templates/reports/contact-report.html:34
 msgid "Settled"
 msgstr "নিষ্পত্তিকৃত"
 
 #: templates/core/party-list.html:4 templates/operations/payment-center.html:21
-#: templates/reports/contact-report.html:35
+#: templates/reports/contact-report.html:34
 msgid "Payable"
 msgstr "প্রদেয়"
 
 #: templates/core/party-list.html:4 templates/operations/payment-center.html:21
-#: templates/reports/contact-report.html:35
+#: templates/reports/contact-report.html:34
 msgid "Receivable"
 msgstr "প্রাপ্য"
 
 #: templates/core/party-list.html:4
-msgid "No contacts found"
-msgstr "কোন পরিচিতি পাওয়া যায়নি"
+msgid "No parties found"
+msgstr "কোনো পার্টি পাওয়া যায়নি"
 
 #: templates/core/party-list.html:4 templates/core/product-list.html:4
 msgid "Try a different search term."
 msgstr "একটি ভিন্ন অনুসন্ধান শব্দ চেষ্টা করুন."
 
 #: templates/core/party-list.html:4
-msgid "Add your first customer or supplier to begin."
-msgstr "শুরু করতে আপনার প্রথম গ্রাহক বা সরবরাহকারী যোগ করুন।"
+msgid "Add the first party your business transacts with."
+msgstr "আপনার ব্যবসার প্রথম লেনদেনকারী পার্টি যোগ করুন।"
 
 #: templates/core/product-form.html:1
 msgid "Define how this item is identified, priced, and monitored."
@@ -3920,8 +3907,8 @@ msgid "items ·"
 msgstr "আইটেম ·"
 
 #: templates/core/settings/tenant-detail.html:3
-msgid "contacts"
-msgstr "পরিচিতি"
+msgid "parties"
+msgstr "পার্টিসমূহ"
 
 #: templates/core/settings/tenant-detail.html:4
 msgid "Access"
@@ -3990,8 +3977,8 @@ msgid "available"
 msgstr "উপলব্ধ"
 
 #: templates/core/settings/tenant-detail.html:4
-msgid "5. Contacts"
-msgstr "5. পরিচিতি"
+msgid "5. Parties"
+msgstr "5. পার্টিসমূহ"
 
 #: templates/core/settings/tenant-detail.html:4
 msgid "6. Catalog"
@@ -4336,12 +4323,12 @@ msgid "Set off mutual balances"
 msgstr "পারস্পরিক ভারসাম্য বন্ধ করুন"
 
 #: templates/operations/balance-setoff-form.html:5
-msgid ""
-"is both a customer and supplier. Allocate equal amounts to clear receivables "
-"against payables without moving cash."
-msgstr ""
-"একটি গ্রাহক এবং সরবরাহকারী উভয়. নগদ স্থানান্তর না করে প্রদেয়দের বিপরীতে সাফ "
-"প্রাপ্তির জন্য সমান পরিমাণ বরাদ্দ করুন।"
+msgid "Allocate equal receivable and payable amounts for"
+msgstr "সমান প্রাপ্য ও প্রদেয় পরিমাণ বরাদ্দ করুন"
+
+#: templates/operations/balance-setoff-form.html:5
+msgid "without moving cash."
+msgstr "নগদ অর্থ স্থানান্তর না করে।"
 
 #: templates/operations/balance-setoff-form.html:11
 msgid "Set-off date"
@@ -4352,8 +4339,8 @@ msgid "Internal note"
 msgstr "অভ্যন্তরীণ নোট"
 
 #: templates/operations/balance-setoff-form.html:16
-msgid "Customer invoices"
-msgstr "গ্রাহক চালান"
+msgid "Sales invoices"
+msgstr "বিক্রয় চালান"
 
 #: templates/operations/balance-setoff-form.html:17
 #: templates/operations/balance-setoff-form.html:24
@@ -4365,8 +4352,8 @@ msgid "Receivable selected"
 msgstr "প্রাপ্য নির্বাচিত"
 
 #: templates/operations/balance-setoff-form.html:23
-msgid "Supplier purchases"
-msgstr "সরবরাহকারী ক্রয়"
+msgid "Purchase documents"
+msgstr "ক্রয় নথি"
 
 #: templates/operations/balance-setoff-form.html:27
 msgid "Payable selected"
@@ -4460,14 +4447,15 @@ msgstr "জার্নাল, ভাউচার এবং স্টক আন�
 
 #: templates/operations/document-detail.html:78
 #: templates/operations/receive-payment.html:6
+#: templates/operations/receive-payment.html:7
 msgid "Receive payment"
 msgstr "পেমেন্ট গ্রহণ"
 
 #: templates/operations/document-detail.html:79
 #: templates/operations/pay-purchase.html:6
 #: templates/operations/pay-purchase.html:7
-msgid "Pay supplier"
-msgstr "সরবরাহকারীকে অর্থ প্রদান করুন"
+msgid "Record payment"
+msgstr "পেমেন্ট রেকর্ড করুন"
 
 #: templates/operations/document-detail.html:81
 msgid "Download money receipt"
@@ -4519,12 +4507,8 @@ msgid "View contra"
 msgstr "বিপরীত দেখুন"
 
 #: templates/operations/document-detail.html:107
-msgid "Customer settlement"
-msgstr "গ্রাহক নিষ্পত্তি"
-
-#: templates/operations/document-detail.html:107
-msgid "Supplier settlement"
-msgstr "সরবরাহকারী নিষ্পত্তি"
+msgid "Party settlement"
+msgstr "পার্টির নিষ্পত্তি"
 
 #: templates/operations/document-detail.html:107
 msgid "Payment history"
@@ -4552,12 +4536,12 @@ msgid "No allocated payments yet"
 msgstr "এখনও কোন বরাদ্দ পেমেন্ট"
 
 #: templates/operations/document-detail.html:115
-msgid "Use Receive payment when the customer settles this invoice."
-msgstr "গ্রাহক যখন এই চালানটি নিষ্পত্তি করে তখন অর্থ গ্রহণ করুন ব্যবহার করুন।"
+msgid "Use Receive payment when the party settles this invoice."
+msgstr "পার্টি এই চালান পরিশোধ করলে পেমেন্ট গ্রহণ করুন।"
 
 #: templates/operations/document-detail.html:115
-msgid "Use Pay supplier when this payable is settled."
-msgstr "এই প্রদেয় নিষ্পত্তি করা হলে পে সরবরাহকারী ব্যবহার করুন।"
+msgid "Use Record payment when this payable is settled."
+msgstr "এই প্রদেয় পরিশোধ হলে পেমেন্ট রেকর্ড করুন।"
 
 #: templates/operations/document-form.html:6
 msgid "workflow"
@@ -4569,8 +4553,8 @@ msgid ""
 "the accounting entries automatically and assigns the record number when "
 "saved."
 msgstr ""
-"পার্টি, পরিশোধের ব্যবস্থা এবং পণ্য নির্বাচন করুন। প্রাইম লেজার স্বয়ংক্রিয়ভাবে "
-"হিসাবের এন্ট্রি নির্ধারণ করে এবং সংরক্ষণের সময় রেকর্ড নম্বর দেয়।"
+"পার্টি, পরিশোধের ব্যবস্থা এবং পণ্য নির্বাচন করুন। প্রাইম লেজার স্বয়ংক্রিয়ভাবে হিসাবের "
+"এন্ট্রি নির্ধারণ করে এবং সংরক্ষণের সময় রেকর্ড নম্বর দেয়।"
 
 #: templates/operations/document-form.html:27
 msgid "Accounting handled automatically"
@@ -4679,8 +4663,8 @@ msgid "Create a draft or adjust the selected filters."
 msgstr "একটি খসড়া তৈরি করুন বা নির্বাচিত ফিল্টারগুলি সামঞ্জস্য করুন৷"
 
 #: templates/operations/pay-purchase.html:2
-msgid "Pay supplier ·"
-msgstr "পে সরবরাহকারী ·"
+msgid "Record payment ·"
+msgstr "পেমেন্ট রেকর্ড করুন ·"
 
 #: templates/operations/pay-purchase.html:8
 msgid "Allocate a payment to"
@@ -4766,15 +4750,14 @@ msgstr "নিষ্পত্তি কর্মক্ষেত্র"
 
 #: templates/operations/payment-center.html:5
 msgid ""
-"Collect customer receivables and settle supplier payables from one "
-"controlled workspace."
+"Collect receivables and settle payables for any party from one controlled "
+"workspace."
 msgstr ""
-"গ্রাহকের প্রাপ্য সংগ্রহ করুন এবং একটি নিয়ন্ত্রিত কর্মক্ষেত্র থেকে সরবরাহকারীর প্রদেয় "
-"মীমাংসা করুন।"
+"একটি নিয়ন্ত্রিত কর্মক্ষেত্র থেকে যেকোনো পার্টির প্রাপ্য সংগ্রহ ও প্রদেয় পরিশোধ করুন।"
 
 #: templates/operations/payment-center.html:9
-msgid "Customer receivables"
-msgstr "গ্রাহক প্রাপ্য"
+msgid "Receivables"
+msgstr "প্রাপ্যসমূহ"
 
 #: templates/operations/payment-center.html:9
 #: templates/operations/payment-center.html:10
@@ -4782,16 +4765,16 @@ msgid "currently outstanding"
 msgstr "বর্তমানে অসামান্য"
 
 #: templates/operations/payment-center.html:10
-msgid "Supplier payables"
-msgstr "সরবরাহকারী প্রদেয়"
+msgid "Payables"
+msgstr "প্রদেয়সমূহ"
 
 #: templates/operations/payment-center.html:14
-msgid "Search invoice or contact"
-msgstr "চালান বা যোগাযোগ অনুসন্ধান করুন"
+msgid "Search document or party"
+msgstr "নথি বা পার্টি অনুসন্ধান করুন"
 
 #: templates/operations/payment-center.html:14
-msgid "Number, customer, or supplier"
-msgstr "নম্বর, গ্রাহক বা সরবরাহকারী"
+msgid "Number or party name"
+msgstr "নম্বর বা পার্টির নাম"
 
 #: templates/operations/payment-center.html:15
 msgid "Clear"
@@ -4807,23 +4790,19 @@ msgstr "পারস্পরিক ভারসাম্য"
 
 #: templates/operations/payment-center.html:20
 msgid ""
-"Contacts with both receivable and payable balances can be settled through a "
+"Parties with both receivable and payable balances can be settled through a "
 "contra entry."
 msgstr ""
-"প্রাপ্য এবং প্রদেয় ব্যালেন্সের সাথে পরিচিতিগুলি একটি বিপরীত এন্ট্রির মাধ্যমে নিষ্পত্তি "
+"প্রাপ্য এবং প্রদেয় উভয় ব্যালেন্স থাকা পার্টিসমূহ কনট্রা এন্ট্রির মাধ্যমে নিষ্পত্তি "
 "করা যেতে পারে।"
-
-#: templates/operations/payment-center.html:21
-msgid "Customer &amp; supplier"
-msgstr "গ্রাহক ও সরবরাহকারী"
 
 #: templates/operations/payment-center.html:21
 msgid "Maximum set-off"
 msgstr "সর্বোচ্চ সেট-অফ"
 
 #: templates/operations/payment-center.html:22
-msgid "Classified as customer and supplier"
-msgstr "গ্রাহক এবং সরবরাহকারী হিসাবে শ্রেণীবদ্ধ"
+msgid "Has both receivable and payable balances"
+msgstr "প্রাপ্য ও প্রদেয় উভয় ব্যালেন্স রয়েছে"
 
 #: templates/operations/payment-center.html:22
 msgid "Set off balances"
@@ -4839,19 +4818,17 @@ msgstr "মিটমাট করতে পারস্পরিক ভারস
 
 #: templates/operations/payment-center.html:23
 msgid ""
-"A contact classified as Customer &amp; Supplier will appear here when it has "
-"both an open receivable and payable."
-msgstr ""
-"গ্রাহক এবং সরবরাহকারী হিসাবে শ্রেণীবদ্ধ একটি পরিচিতি এখানে উপস্থিত হবে যখন এটির "
-"একটি খোলা প্রাপ্য এবং প্রদেয় উভয়ই থাকবে৷"
+"A party appears here whenever it has both an open receivable and an open "
+"payable."
+msgstr "কোনো পার্টির খোলা প্রাপ্য ও প্রদেয় উভয় ব্যালেন্স থাকলে এখানে দেখা যাবে।"
 
 #: templates/operations/payment-center.html:30
 msgid "Money in"
 msgstr "টাকা ইন"
 
 #: templates/operations/payment-center.html:30
-msgid "Open customer receivables"
-msgstr "খোলা গ্রাহক প্রাপ্য"
+msgid "Open receivables"
+msgstr "খোলা প্রাপ্যসমূহ"
 
 #: templates/operations/payment-center.html:32
 msgid "Receive"
@@ -4863,8 +4840,8 @@ msgid "View only"
 msgstr "শুধুমাত্র দেখুন"
 
 #: templates/operations/payment-center.html:33
-msgid "No customer balances due"
-msgstr "কোনো গ্রাহকের ভারসাম্য নেই"
+msgid "No receivable balances due"
+msgstr "কোনো প্রাপ্য ব্যালেন্স নেই"
 
 #: templates/operations/payment-center.html:33
 msgid ""
@@ -4883,12 +4860,12 @@ msgid "Money out"
 msgstr "টাকা আউট"
 
 #: templates/operations/payment-center.html:43
-msgid "Open supplier payables"
-msgstr "খোলা সরবরাহকারী প্রদেয়"
+msgid "Open payables"
+msgstr "খোলা প্রদেয়সমূহ"
 
 #: templates/operations/payment-center.html:46
-msgid "No supplier balances due"
-msgstr "কোনো সরবরাহকারীর ভারসাম্য নেই"
+msgid "No payable balances due"
+msgstr "কোনো প্রদেয় ব্যালেন্স নেই"
 
 #: templates/operations/payment-center.html:46
 msgid ""
@@ -4897,28 +4874,24 @@ msgstr ""
 "পোস্ট করা অ্যাকাউন্ট একটি বকেয়া ব্যালেন্স সহ প্রদেয় কেনাকাটা এখানে প্রদর্শিত হবে।"
 
 #: templates/operations/payment-center.html:52
-msgid "Customer receipts"
-msgstr "গ্রাহক রসিদ"
+msgid "Receipts"
+msgstr "রসিদসমূহ"
 
 #: templates/operations/payment-center.html:52
-msgid "No customer receipts yet"
-msgstr "এখনও কোন গ্রাহক রসিদ"
+msgid "No receipts yet"
+msgstr "এখনও কোনো রসিদ নেই"
 
 #: templates/operations/payment-center.html:53
-msgid "Supplier payments"
-msgstr "সরবরাহকারীর অর্থপ্রদান"
+msgid "Outgoing payments"
+msgstr "বহির্গামী পেমেন্ট"
 
 #: templates/operations/payment-center.html:53
-msgid "No supplier payments yet"
-msgstr "এখনও কোন সরবরাহকারী পেমেন্ট"
+msgid "No outgoing payments yet"
+msgstr "এখনও কোনো বহির্গামী পেমেন্ট নেই"
 
 #: templates/operations/receive-payment.html:2
 msgid "Receive payment ·"
 msgstr "পেমেন্ট পান ·"
-
-#: templates/operations/receive-payment.html:7
-msgid "Receive customer payment"
-msgstr "গ্রাহক পেমেন্ট পান"
 
 #: templates/operations/receive-payment.html:8
 msgid "Allocate a payment from"
@@ -5122,16 +5095,16 @@ msgid "Create or apply a chart of accounts to populate this report."
 msgstr "এই প্রতিবেদনটি তৈরি করতে অ্যাকাউন্টগুলির একটি চার্ট তৈরি করুন বা প্রয়োগ করুন৷"
 
 #: templates/reports/contact-report.html:2
-msgid "Contact directory | Prime Ledger"
-msgstr "যোগাযোগ তালিকা | প্রাইম লেজার"
+msgid "Party directory | Prime Ledger"
+msgstr "পার্টি তালিকা | প্রাইম লেজার"
 
 #: templates/reports/contact-report.html:7 templates/reports/index.html:6
-msgid "Contact directory"
-msgstr "যোগাযোগ তালিকা"
+msgid "Party directory"
+msgstr "পার্টি তালিকা"
 
 #: templates/reports/contact-report.html:8
-msgid "Customers, suppliers, and shared contacts for"
-msgstr "এর জন্য গ্রাহক, সরবরাহকারী এবং শেয়ার করা পরিচিতি"
+msgid "Every person and organisation that transacts with"
+msgstr "লেনদেনকারী প্রত্যেক ব্যক্তি ও প্রতিষ্ঠান"
 
 #: templates/reports/contact-report.html:16
 #: templates/reports/invoice-report.html:16
@@ -5140,43 +5113,24 @@ msgid "Report summary"
 msgstr "প্রতিবেদনের সারাংশ"
 
 #: templates/reports/contact-report.html:17
-msgid "Matching contacts"
-msgstr "মিলিত পরিচিতি"
+msgid "Matching parties"
+msgstr "মিলে যাওয়া পার্টি"
 
 #: templates/reports/contact-report.html:17
 msgid "Current filtered result"
 msgstr "বর্তমান ফিল্টার করা ফলাফল"
 
 #: templates/reports/contact-report.html:18
-msgid "Contact scope"
-msgstr "যোগাযোগের সুযোগ"
+msgid "Directory scope"
+msgstr "তালিকার পরিধি"
 
 #: templates/reports/contact-report.html:18
-#: templates/reports/contact-report.html:25
-msgid "Customers"
-msgstr "গ্রাহকগণ"
+msgid "All parties"
+msgstr "সব পার্টি"
 
 #: templates/reports/contact-report.html:18
-#: templates/reports/contact-report.html:25
-msgid "Suppliers"
-msgstr "সরবরাহকারীগণ"
-
-#: templates/reports/contact-report.html:18
-msgid "Shared contacts"
-msgstr "শেয়ার করা পরিচিতি"
-
-#: templates/reports/contact-report.html:18
-#: templates/reports/contact-report.html:25
-msgid "Employees"
-msgstr "কর্মচারীগণ"
-
-#: templates/reports/contact-report.html:18
-msgid "All types"
-msgstr "সব ধরন"
-
-#: templates/reports/contact-report.html:18
-msgid "Relationship classification"
-msgstr "সম্পর্কের শ্রেণীবিভাগ"
+msgid "One shared business directory"
+msgstr "ব্যবসার একটি অভিন্ন তালিকা"
 
 #: templates/reports/contact-report.html:19
 msgid "Record state"
@@ -5200,57 +5154,41 @@ msgstr "অনুসন্ধান রেকর্ড"
 msgid "Name, phone, email, or address"
 msgstr "নাম, ফোন, ইমেল বা ঠিকানা"
 
-#: templates/reports/contact-report.html:25
-msgid "Contact type"
-msgstr "যোগাযোগের ধরন"
-
-#: templates/reports/contact-report.html:25
-msgid "All contact types"
-msgstr "সব ধরনের যোগাযোগ"
-
-#: templates/reports/contact-report.html:25
-msgid "Customer and supplier"
-msgstr "গ্রাহক এবং সরবরাহকারী"
-
-#: templates/reports/contact-report.html:27
+#: templates/reports/contact-report.html:26
 msgid "Balance date"
 msgstr "ব্যালেন্স তারিখ"
 
-#: templates/reports/contact-report.html:28
+#: templates/reports/contact-report.html:27
 #: templates/reports/invoice-report.html:27
 #: templates/reports/money-receipt-report.html:27
 #: templates/reports/transaction-register.html:10
 msgid "Apply filters"
 msgstr "ফিল্টার প্রয়োগ করুন"
 
-#: templates/reports/contact-report.html:28
+#: templates/reports/contact-report.html:27
 #: templates/reports/invoice-report.html:27
 #: templates/reports/money-receipt-report.html:27
 #: templates/reports/transaction-register.html:10
 msgid "Reset"
 msgstr "রিসেট"
 
-#: templates/reports/contact-report.html:32
-msgid "Relationship"
-msgstr "সম্পর্ক"
-
-#: templates/reports/contact-report.html:32
+#: templates/reports/contact-report.html:31
 msgid "Opening"
 msgstr "খোলা হচ্ছে"
 
-#: templates/reports/contact-report.html:32
+#: templates/reports/contact-report.html:31
 msgid "Closing"
 msgstr "বন্ধ হচ্ছে"
 
-#: templates/reports/contact-report.html:37
-msgid "No contacts match this view"
-msgstr "কোনো পরিচিতি এই দৃশ্যের সাথে মেলে না"
+#: templates/reports/contact-report.html:36
+msgid "No parties match this view"
+msgstr "এই তালিকায় কোনো পার্টি মেলেনি"
 
-#: templates/reports/contact-report.html:37
-msgid "Adjust the contact type, state, or search term and try again."
-msgstr "যোগাযোগের ধরন, রাজ্য, বা অনুসন্ধান শব্দ সামঞ্জস্য করুন এবং আবার চেষ্টা করুন।"
+#: templates/reports/contact-report.html:36
+msgid "Adjust the state or search term and try again."
+msgstr "অবস্থা বা অনুসন্ধান শব্দ পরিবর্তন করে আবার চেষ্টা করুন।"
 
-#: templates/reports/contact-report.html:37
+#: templates/reports/contact-report.html:36
 #: templates/reports/invoice-report.html:36
 #: templates/reports/money-receipt-report.html:36
 msgid "Clear all filters"
@@ -5281,8 +5219,8 @@ msgid "PDF and CSV exports"
 msgstr "PDF এবং CSV রপ্তানি"
 
 #: templates/reports/index.html:6
-msgid "Customers, suppliers, contact details, and opening positions."
-msgstr "গ্রাহক, সরবরাহকারী, যোগাযোগের বিবরণ এবং খোলার অবস্থান।"
+msgid "Parties, contact details, and opening positions."
+msgstr "পার্টি, যোগাযোগের বিবরণ এবং প্রারম্ভিক অবস্থান।"
 
 #: templates/reports/index.html:6
 msgid "Directory"
@@ -5293,8 +5231,8 @@ msgid "Invoice register"
 msgstr "চালান নিবন্ধন"
 
 #: templates/reports/index.html:7
-msgid "Posted customer invoices, discounts, and net sale values."
-msgstr "পোস্ট করা গ্রাহক চালান, ডিসকাউন্ট, এবং নেট বিক্রয় মান."
+msgid "Posted sales invoices by party, discounts, and net values."
+msgstr "পার্টি অনুযায়ী পোস্ট করা বিক্রয় চালান, ছাড় ও নিট মূল্য।"
 
 #: templates/reports/index.html:7 templates/reports/index.html:9
 msgid "Financial"
@@ -5305,8 +5243,8 @@ msgid "Money receipt register"
 msgstr "মানি রিসিট রেজিস্টার"
 
 #: templates/reports/index.html:9
-msgid "Immediate sale receipts and posted customer receipt vouchers."
-msgstr "অবিলম্বে বিক্রয় রসিদ এবং পোস্ট করা গ্রাহক রসিদ ভাউচার."
+msgid "Immediate sale receipts and posted receipt vouchers by party."
+msgstr "তাৎক্ষণিক বিক্রয় রসিদ এবং পার্টি অনুযায়ী পোস্ট করা রসিদ ভাউচার।"
 
 #: templates/reports/index.html:10
 #: templates/reports/transaction-register.html:5
@@ -5342,8 +5280,9 @@ msgid "Invoice register | Prime Ledger"
 msgstr "চালান নিবন্ধন | প্রাইম লেজার"
 
 #: templates/reports/invoice-report.html:8
-msgid "Posted customer invoices; drafts remain outside the financial record."
-msgstr "পোস্ট করা গ্রাহক চালান; খসড়া আর্থিক রেকর্ডের বাইরে থাকে।"
+msgid ""
+"Posted sales invoices by party; drafts remain outside the financial record."
+msgstr "পার্টি অনুযায়ী পোস্ট করা বিক্রয় চালান; খসড়া আর্থিক রেকর্ডের বাইরে থাকে।"
 
 #: templates/reports/invoice-report.html:17
 msgid "Net invoice value"
@@ -5370,8 +5309,8 @@ msgid "posted invoice"
 msgstr "চালান পোস্ট করা হয়েছে"
 
 #: templates/reports/invoice-report.html:24
-msgid "Invoice number or customer"
-msgstr "চালান নম্বর বা গ্রাহক"
+msgid "Invoice number or party"
+msgstr "চালান নম্বর বা পার্টি"
 
 #: templates/reports/invoice-report.html:31
 msgid "Net total"
@@ -5518,6 +5457,187 @@ msgstr "মোট ·"
 #: templates/reports/transaction-register.html:12
 msgid "transactions ("
 msgstr "লেনদেন ("
+
+#~ msgid "Set-off and voucher contacts must match."
+#~ msgstr "সেট-অফ এবং ভাউচার পরিচিতি অবশ্যই মিলবে।"
+
+#~ msgid "Review contacts"
+#~ msgstr "পরিচিতি পর্যালোচনা করুন"
+
+#~ msgid "contacts"
+#~ msgstr "পরিচিতি"
+
+#~ msgid "5. Contacts"
+#~ msgstr "5. পরিচিতি"
+
+#~ msgid "Contact"
+#~ msgstr "যোগাযোগ"
+
+#~ msgid "Contacts | Prime Ledger"
+#~ msgstr "যোগাযোগসমূহ | প্রাইম লেজার"
+
+#~ msgid "Search contacts"
+#~ msgstr "পরিচিতি অনুসন্ধান করুন"
+
+#~ msgid "A contact with this name and type already exists."
+#~ msgstr "এই নাম এবং প্রকারের সাথে একটি পরিচিতি ইতিমধ্যেই বিদ্যমান৷"
+
+#~ msgid "Add contact"
+#~ msgstr "পরিচিতি যোগ করুন"
+
+#~ msgid "Supplier payment"
+#~ msgstr "সরবরাহকারীকে পরিশোধ"
+
+#~ msgid "I confirm that this supplier payment should be posted."
+#~ msgstr "আমি নিশ্চিত করি যে এই সরবরাহকারীর অর্থপ্রদান পোস্ট করা উচিত।"
+
+#~ msgid "This supplier invoice is already paid in full."
+#~ msgstr "এই সরবরাহকারী চালান ইতিমধ্যে সম্পূর্ণরূপে প্রদান করা হয়েছে."
+
+#~ msgid "Select an active contact classified as Customer and Supplier."
+#~ msgstr ""
+#~ "গ্রাহক এবং সরবরাহকারী হিসাবে শ্রেণীবদ্ধ একটি সক্রিয় পরিচিতি নির্বাচন করুন।"
+
+#~ msgid "Sales require a customer and purchases require a supplier."
+#~ msgstr ""
+#~ "বিক্রয়ের জন্য একজন গ্রাহকের প্রয়োজন এবং ক্রয়ের জন্য একজন সরবরাহকারীর প্রয়োজন।"
+
+#~ msgid "Payment and money receipt customers must match."
+#~ msgstr "অর্থপ্রদান এবং অর্থ রসিদ গ্রাহকদের অবশ্যই মিলবে।"
+
+#~ msgid "Supplier payments require a posted purchase."
+#~ msgstr "সরবরাহকারী অর্থপ্রদানের জন্য একটি পোস্ট করা ক্রয় প্রয়োজন।"
+
+#~ msgid "A supplier payment requires a posted journal entry."
+#~ msgstr "একটি সরবরাহকারী অর্থপ্রদানের জন্য একটি পোস্ট করা জার্নাল এন্ট্রি প্রয়োজন।"
+
+#~ msgid "Payment and voucher suppliers must match."
+#~ msgstr "পেমেন্ট এবং ভাউচার সরবরাহকারী অবশ্যই মিলবে।"
+
+#~ msgid "Posted supplier payments cannot be edited."
+#~ msgstr "পোস্ট করা সরবরাহকারী পেমেন্ট সম্পাদনা করা যাবে না."
+
+#~ msgid "Posted supplier payments cannot be deleted."
+#~ msgstr "পোস্ট করা সরবরাহকারী পেমেন্ট মুছে ফেলা যাবে না."
+
+#~ msgid ""
+#~ "Balance set-off requires a contact classified as Customer and Supplier."
+#~ msgstr ""
+#~ "ব্যালেন্স সেট-অফের জন্য গ্রাহক এবং সরবরাহকারী হিসাবে শ্রেণীবদ্ধ একটি পরিচিতি "
+#~ "প্রয়োজন।"
+
+#, python-format
+#~ msgid "Supplier payment %(payment)s posted with voucher %(voucher)s."
+#~ msgstr "সরবরাহকারী পেমেন্ট %(payment)s ভাউচার %(voucher)s সহ পোস্ট করা হয়েছে।"
+
+#~ msgid "Contacts"
+#~ msgstr "যোগাযোগসমূহ"
+
+#~ msgid "Active customers and suppliers"
+#~ msgstr "সক্রিয় গ্রাহক এবং সরবরাহকারী"
+
+#~ msgid "Create a clear customer or supplier record for"
+#~ msgstr "জন্য একটি পরিষ্কার গ্রাহক বা সরবরাহকারী রেকর্ড তৈরি করুন"
+
+#~ msgid "Save contact"
+#~ msgstr "পরিচিতি সংরক্ষণ করুন"
+
+#~ msgid "Customers &amp; suppliers"
+#~ msgstr "গ্রাহক ও সরবরাহকারী"
+
+#~ msgid "No contacts found"
+#~ msgstr "কোন পরিচিতি পাওয়া যায়নি"
+
+#~ msgid "Add your first customer or supplier to begin."
+#~ msgstr "শুরু করতে আপনার প্রথম গ্রাহক বা সরবরাহকারী যোগ করুন।"
+
+#~ msgid ""
+#~ "is both a customer and supplier. Allocate equal amounts to clear "
+#~ "receivables against payables without moving cash."
+#~ msgstr ""
+#~ "একটি গ্রাহক এবং সরবরাহকারী উভয়. নগদ স্থানান্তর না করে প্রদেয়দের বিপরীতে সাফ "
+#~ "প্রাপ্তির জন্য সমান পরিমাণ বরাদ্দ করুন।"
+
+#~ msgid "Customer invoices"
+#~ msgstr "গ্রাহক চালান"
+
+#~ msgid "Supplier purchases"
+#~ msgstr "সরবরাহকারী ক্রয়"
+
+#~ msgid "Pay supplier"
+#~ msgstr "সরবরাহকারীকে অর্থ প্রদান করুন"
+
+#~ msgid "Customer settlement"
+#~ msgstr "গ্রাহক নিষ্পত্তি"
+
+#~ msgid "Supplier settlement"
+#~ msgstr "সরবরাহকারী নিষ্পত্তি"
+
+#~ msgid "Pay supplier ·"
+#~ msgstr "পে সরবরাহকারী ·"
+
+#~ msgid "Customer receivables"
+#~ msgstr "গ্রাহক প্রাপ্য"
+
+#~ msgid "Supplier payables"
+#~ msgstr "সরবরাহকারী প্রদেয়"
+
+#~ msgid "Search invoice or contact"
+#~ msgstr "চালান বা যোগাযোগ অনুসন্ধান করুন"
+
+#~ msgid "Number, customer, or supplier"
+#~ msgstr "নম্বর, গ্রাহক বা সরবরাহকারী"
+
+#~ msgid "Customer &amp; supplier"
+#~ msgstr "গ্রাহক ও সরবরাহকারী"
+
+#~ msgid "Classified as customer and supplier"
+#~ msgstr "গ্রাহক এবং সরবরাহকারী হিসাবে শ্রেণীবদ্ধ"
+
+#~ msgid "Customer receipts"
+#~ msgstr "গ্রাহক রসিদ"
+
+#~ msgid "Supplier payments"
+#~ msgstr "সরবরাহকারীর অর্থপ্রদান"
+
+#~ msgid "Receive customer payment"
+#~ msgstr "গ্রাহক পেমেন্ট পান"
+
+#~ msgid "Customers, suppliers, and shared contacts for"
+#~ msgstr "এর জন্য গ্রাহক, সরবরাহকারী এবং শেয়ার করা পরিচিতি"
+
+#~ msgid "Contact scope"
+#~ msgstr "যোগাযোগের সুযোগ"
+
+#~ msgid "Customers"
+#~ msgstr "গ্রাহকগণ"
+
+#~ msgid "Suppliers"
+#~ msgstr "সরবরাহকারীগণ"
+
+#~ msgid "Shared contacts"
+#~ msgstr "শেয়ার করা পরিচিতি"
+
+#~ msgid "Employees"
+#~ msgstr "কর্মচারীগণ"
+
+#~ msgid "All types"
+#~ msgstr "সব ধরন"
+
+#~ msgid "Relationship classification"
+#~ msgstr "সম্পর্কের শ্রেণীবিভাগ"
+
+#~ msgid "Contact type"
+#~ msgstr "যোগাযোগের ধরন"
+
+#~ msgid "All contact types"
+#~ msgstr "সব ধরনের যোগাযোগ"
+
+#~ msgid "Customer and supplier"
+#~ msgstr "গ্রাহক এবং সরবরাহকারী"
+
+#~ msgid "Relationship"
+#~ msgstr "সম্পর্ক"
 
 #~ msgid ""
 #~ "This permanently removes the draft and its lines. Its automatic number "

@@ -25,13 +25,8 @@ class TradeDocumentForm(forms.ModelForm):
         self.kind = kind
         self.instance.business = business
         self.instance.kind = kind
-        party_kinds = (
-            [Party.Kind.CUSTOMER, Party.Kind.BOTH]
-            if kind == TradeDocument.Kind.SALE
-            else [Party.Kind.SUPPLIER, Party.Kind.BOTH]
-        )
         self.fields["party"].queryset = Party.objects.filter(
-            business=business, is_active=True, kind__in=party_kinds
+            business=business, is_active=True
         ).order_by("name")
         self.fields["period"].queryset = FiscalPeriod.objects.filter(
             business=business, is_locked=False
@@ -47,9 +42,7 @@ class TradeDocumentForm(forms.ModelForm):
             (SettlementMethod.BANK, _("Bank")),
             (SettlementMethod.MOBILE_MONEY, _("Mobile financial services")),
         ]
-        self.fields["settlement_method"].label = (
-            _("Customer payment") if kind == TradeDocument.Kind.SALE else _("Supplier payment")
-        )
+        self.fields["settlement_method"].label = _("Payment arrangement")
         self.fields["settlement_method"].help_text = (
             _("Choose Receive later for an Accounts Receivable sale.")
             if kind == TradeDocument.Kind.SALE
@@ -280,7 +273,7 @@ class PayPurchaseForm(forms.Form):
     )
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
     confirm = forms.BooleanField(
-        label=_("I confirm that this supplier payment should be posted."),
+        label=_("I confirm that this payment should be posted."),
     )
 
     def __init__(self, *args, business=None, purchase=None, **kwargs):

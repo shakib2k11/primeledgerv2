@@ -5,7 +5,7 @@
   <div>
     <div class="breadcrumb"><a href="{% url 'report-index' %}">{% translate "Reports" %}</a><span>/</span><span>{% translate "Sales" %}</span></div>
     <h1>{% translate "Invoice register" %}</h1>
-    <p class="lede">{% translate "Posted customer invoices; drafts remain outside the financial record." %}</p>
+    <p class="lede">{% translate "Posted sales invoices by party; drafts remain outside the financial record." %}</p>
   </div>
   <div class="heading-actions report-export-actions">
     <a class="button secondary" href="{% url 'invoice-report-csv' %}?q={{ query|urlencode }}&date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3h2v10l3-3 1.4 1.4L12 16.8l-5.4-5.4L8 10l3 3V3ZM5 19h14v2H5v-2Z"/></svg>{% translate "CSV" %}</a>
@@ -21,14 +21,14 @@
 
 <section class="panel data-panel report-data-panel">
   <form class="report-filter-bar" method="get">
-    <label class="report-filter-field report-search-field"><span>{% translate "Search records" %}</span><span class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 20-5.6-5.6a7 7 0 1 0-1.4 1.4l5.6 5.6L21 20ZM5 10a5 5 0 1 1 10 0 5 5 0 0 1-10 0Z"/></svg><input name="q" value="{{ query }}" placeholder="{% translate "Invoice number or customer" %}"></span></label>
+    <label class="report-filter-field report-search-field"><span>{% translate "Search records" %}</span><span class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 20-5.6-5.6a7 7 0 1 0-1.4 1.4l5.6 5.6L21 20ZM5 10a5 5 0 1 1 10 0 5 5 0 0 1-10 0Z"/></svg><input name="q" value="{{ query }}" placeholder="{% translate "Invoice number or party" %}"></span></label>
     <label class="report-filter-field report-date-field"><span>{% translate "From date" %}</span><input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}"></label>
     <label class="report-filter-field report-date-field"><span>{% translate "To date" %}</span><input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}"></label>
     <div class="report-filter-actions"><button class="button tertiary small" type="submit">{% translate "Apply filters" %}</button>{% if query or date_from or date_to %}<a class="filter-reset" href="{% url 'invoice-report' %}">{% translate "Reset" %}</a>{% endif %}</div>
   </form>
   <div class="table-wrap">
     <table class="report-table">
-      <thead><tr><th>{% translate "Invoice" %}</th><th>{% translate "Date" %}</th><th>{% translate "Customer" %}</th><th class="numeric">{% translate "Net total" %}</th><th class="numeric">{% translate "Paid" %}</th><th class="numeric">{% translate "Balance" %}</th><th>{% translate "Status" %}</th><th><span class="sr-only">{% translate "Actions" %}</span></th></tr></thead>
+      <thead><tr><th>{% translate "Invoice" %}</th><th>{% translate "Date" %}</th><th>{% translate "Party" %}</th><th class="numeric">{% translate "Net total" %}</th><th class="numeric">{% translate "Paid" %}</th><th class="numeric">{% translate "Balance" %}</th><th>{% translate "Status" %}</th><th><span class="sr-only">{% translate "Actions" %}</span></th></tr></thead>
       <tbody>
         {% for invoice in invoices %}
         <tr><td><a class="table-link report-number" href="{% url 'sale-detail' invoice.pk %}">{{ invoice.number }}</a><small>{% translate "Posted invoice" %}</small></td><td><span class="report-date">{{ invoice.document_date|date:"d M Y" }}</span></td><td><strong>{{ invoice.party.name }}</strong><small>{{ invoice.period.name }}</small></td><td class="numeric money report-amount">{{ invoice.total|floatformat:2 }}</td><td class="numeric money">{{ invoice.paid_amount|floatformat:2 }}</td><td class="numeric money report-amount">{{ invoice.balance_due|floatformat:2 }} <small class="inline">{{ business.currency }}</small></td><td><span class="status-text {% if invoice.payment_status == 'paid' %}positive{% elif invoice.payment_status == 'partial' %}attention{% else %}muted{% endif %}">{{ invoice.get_payment_status_display }}</span></td><td class="action-cell"><a class="report-row-action" href="{% url 'sale-document-pdf' invoice.pk %}">{% translate "PDF" %} <span aria-hidden="true">↓</span></a></td></tr>

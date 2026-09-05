@@ -30,7 +30,7 @@
     <div class="detail-meta">
       <div><span>{% translate "Party" %}</span><strong>{{ document.party.name }}</strong></div>
       <div><span>{% translate "Fiscal period" %}</span><strong>{{ document.period.name }}</strong></div>
-      <div><span>{% if kind == 'sale' %}{% translate "Customer payment" %}{% else %}{% translate "Supplier payment" %}{% endif %}</span><strong>{{ settlement_summary }}</strong></div>
+      <div><span>{% translate "Payment arrangement" %}</span><strong>{{ settlement_summary }}</strong></div>
       <div><span>{% translate "Accounting" %}</span><strong>{% translate "Generated automatically" %}</strong></div>
     </div>
     <details class="accounting-details">
@@ -76,7 +76,7 @@
         <dl><div><dt>{% translate "Paid" %}</dt><dd>{{ paid_amount|floatformat:2 }}</dd></div><div><dt>{% translate "Balance" %}</dt><dd>{{ balance_due|floatformat:2 }}</dd></div></dl>
       </div>
       {% if document.can_receive_payment and can_post_sales %}<a class="button primary wide" href="{% url 'sale-receive-payment' document.pk %}">{% translate "Receive payment" %}</a>{% endif %}
-      {% if document.can_pay_supplier and can_post_purchases %}<a class="button primary wide" href="{% url 'purchase-pay-supplier' document.pk %}">{% translate "Pay supplier" %}</a>{% endif %}
+      {% if document.can_pay_supplier and can_post_purchases %}<a class="button primary wide" href="{% url 'purchase-pay-supplier' document.pk %}">{% translate "Record payment" %}</a>{% endif %}
       {% endif %}
       {% if money_receipt %}<a class="button primary wide" href="{% url 'money-receipt-document-pdf' money_receipt.pk %}">{% translate "Download money receipt" %}</a>{% endif %}
       {% if document.journal_entry %}<a class="button secondary wide" href="{% url 'journal-detail' document.journal_entry.pk %}">{% translate "View journal entry" %}</a>{% endif %}
@@ -99,12 +99,12 @@
 {% if setoff_allocations %}
 <section class="panel data-panel payment-history-panel">
   <div class="table-panel-heading"><div><span class="overline">{% translate "Contra settlement" %}</span><h2>{% translate "Balance set-offs" %}</h2></div></div>
-  <div class="table-wrap"><table><thead><tr><th>{% translate "Set-off" %}</th><th>{% translate "Date" %}</th><th>{% translate "Contact" %}</th><th class="numeric">{% translate "Allocated" %}</th><th></th></tr></thead><tbody>{% for allocation in setoff_allocations %}<tr><td><strong>{{ allocation.setoff.number }}</strong><small>{{ allocation.setoff.voucher.number }}</small></td><td>{{ allocation.setoff.setoff_date|date:"d M Y" }}</td><td>{{ document.party.name }}</td><td class="numeric money">{{ allocation.amount|floatformat:2 }}</td><td class="action-cell"><a class="text-link" href="{% url 'balance-setoff-detail' allocation.setoff.pk %}">{% translate "View contra" %}</a></td></tr>{% endfor %}</tbody></table></div>
+  <div class="table-wrap"><table><thead><tr><th>{% translate "Set-off" %}</th><th>{% translate "Date" %}</th><th>{% translate "Party" %}</th><th class="numeric">{% translate "Allocated" %}</th><th></th></tr></thead><tbody>{% for allocation in setoff_allocations %}<tr><td><strong>{{ allocation.setoff.number }}</strong><small>{{ allocation.setoff.voucher.number }}</small></td><td>{{ allocation.setoff.setoff_date|date:"d M Y" }}</td><td>{{ document.party.name }}</td><td class="numeric money">{{ allocation.amount|floatformat:2 }}</td><td class="action-cell"><a class="text-link" href="{% url 'balance-setoff-detail' allocation.setoff.pk %}">{% translate "View contra" %}</a></td></tr>{% endfor %}</tbody></table></div>
 </section>
 {% endif %}
 {% if document.status == 'posted' and is_credit_sale or document.status == 'posted' and is_credit_purchase %}
 <section class="panel data-panel payment-history-panel">
-  <div class="table-panel-heading"><span class="overline">{% if kind == 'sale' %}{% translate "Customer settlement" %}{% else %}{% translate "Supplier settlement" %}{% endif %}</span><h2>{% translate "Payment history" %}</h2></div>
+  <div class="table-panel-heading"><span class="overline">{% translate "Party settlement" %}</span><h2>{% translate "Payment history" %}</h2></div>
   <div class="table-wrap">
     <table>
       <thead><tr><th>{% translate "Payment" %}</th><th>{% translate "Date" %}</th><th>{% if kind == 'sale' %}{% translate "Deposit account" %}{% else %}{% translate "Paid from" %}{% endif %}</th><th class="numeric">{% translate "Amount" %}</th><th>{% if kind == 'sale' %}{% translate "Received by" %}{% else %}{% translate "Paid by" %}{% endif %}</th><th></th></tr></thead>
@@ -112,7 +112,7 @@
         {% for payment in payments %}
         <tr><td><strong>{{ payment.number }}</strong><small>{{ payment.journal_entry.reference }}</small></td><td>{{ payment.payment_date|date:"d M Y" }}</td><td>{{ payment.payment_account }}</td><td class="numeric money"><strong>{{ payment.amount|floatformat:2 }} <small class="inline">{{ business.currency }}</small></strong></td><td>{% if kind == 'sale' %}{{ payment.received_by.get_full_name|default:payment.received_by.username|default:"System" }}{% else %}{{ payment.paid_by.get_full_name|default:payment.paid_by.username|default:"System" }}{% endif %}</td><td class="action-cell">{% if kind == 'sale' %}<a class="text-link" href="{% url 'money-receipt-document-pdf' payment.money_receipt.pk %}">{% translate "Receipt PDF" %}</a>{% else %}<a class="text-link" href="{% url 'purchase-payment-document-pdf' payment.pk %}">{% translate "Voucher PDF" %}</a>{% endif %}</td></tr>
         {% empty %}
-        <tr><td colspan="6"><div class="empty-state payment-empty"><strong>{% translate "No allocated payments yet" %}</strong><p>{% if kind == 'sale' %}{% translate "Use Receive payment when the customer settles this invoice." %}{% else %}{% translate "Use Pay supplier when this payable is settled." %}{% endif %}</p></div></td></tr>
+        <tr><td colspan="6"><div class="empty-state payment-empty"><strong>{% translate "No allocated payments yet" %}</strong><p>{% if kind == 'sale' %}{% translate "Use Receive payment when the party settles this invoice." %}{% else %}{% translate "Use Record payment when this payable is settled." %}{% endif %}</p></div></td></tr>
         {% endfor %}
       </tbody>
     </table>

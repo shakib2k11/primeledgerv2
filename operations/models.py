@@ -85,15 +85,6 @@ class TradeDocument(models.Model):
             raise ValidationError(_("This fiscal period is locked."))
         if self.debit_account_id and self.debit_account_id == self.credit_account_id:
             raise ValidationError(_("Debit and credit accounts must be different."))
-        if self.party_id:
-            valid_kinds = {
-                self.Kind.SALE: {Party.Kind.CUSTOMER, Party.Kind.BOTH},
-                self.Kind.PURCHASE: {Party.Kind.SUPPLIER, Party.Kind.BOTH},
-            }
-            if self.party.kind not in valid_kinds.get(self.kind, set()):
-                raise ValidationError(
-                    _("Sales require a customer and purchases require a supplier.")
-                )
         if self.kind == self.Kind.PURCHASE and (
             self.discount_type != self.DiscountType.NONE
             or self.discount_value != Decimal("0.00")
@@ -354,7 +345,7 @@ class SalePayment(models.Model):
             if self.money_receipt.amount != self.amount:
                 raise ValidationError(_("Payment and money receipt amounts must match."))
             if self.money_receipt.party_id != self.sale.party_id:
-                raise ValidationError(_("Payment and money receipt customers must match."))
+                raise ValidationError(_("Payment and money receipt parties must match."))
             if self.money_receipt.payment_account_id != self.payment_account_id:
                 raise ValidationError(_("Payment and money receipt accounts must match."))
             if self.money_receipt.receipt_date != self.payment_date:
@@ -459,7 +450,7 @@ class PurchasePayment(models.Model):
             self.purchase.kind != TradeDocument.Kind.PURCHASE
             or self.purchase.status != TradeDocument.Status.POSTED
         ):
-            raise ValidationError(_("Supplier payments require a posted purchase."))
+            raise ValidationError(_("Payments require a posted purchase."))
         if self.purchase_id and (
             self.purchase.credit_account.system_role
             != Account.SystemRole.ACCOUNTS_PAYABLE
@@ -472,14 +463,14 @@ class PurchasePayment(models.Model):
                 _("Payment account must be mapped as Cash, Bank, or Mobile Financial Services.")
             )
         if self.journal_entry_id and not self.journal_entry.posted:
-            raise ValidationError(_("A supplier payment requires a posted journal entry."))
+            raise ValidationError(_("A purchase payment requires a posted journal entry."))
         if self.voucher_id:
             if self.voucher.voucher_type != Voucher.Type.PAYMENT:
-                raise ValidationError(_("Supplier payment requires a payment voucher."))
+                raise ValidationError(_("Purchase payment requires a payment voucher."))
             if self.voucher.total != self.amount:
                 raise ValidationError(_("Payment and voucher amounts must match."))
             if self.voucher.party_id != self.purchase.party_id:
-                raise ValidationError(_("Payment and voucher suppliers must match."))
+                raise ValidationError(_("Payment and voucher parties must match."))
             if self.voucher.voucher_date != self.payment_date:
                 raise ValidationError(_("Payment and voucher dates must match."))
             if self.voucher.journal_entry_id != self.journal_entry_id:
@@ -487,11 +478,11 @@ class PurchasePayment(models.Model):
 
     def save(self, *args, **kwargs):
         if self.pk:
-            raise ValidationError(_("Posted supplier payments cannot be edited."))
+            raise ValidationError(_("Posted purchase payments cannot be edited."))
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValidationError(_("Posted supplier payments cannot be deleted."))
+        raise ValidationError(_("Posted purchase payments cannot be deleted."))
 
 
 class BalanceSetoff(models.Model):
@@ -565,10 +556,6 @@ class BalanceSetoff(models.Model):
             value = getattr(self, field, None)
             if value and value.business_id != self.business_id:
                 raise ValidationError(_("Set-off relationships must belong to the same business."))
-        if self.party_id and self.party.kind != Party.Kind.BOTH:
-            raise ValidationError(
-                _("Balance set-off requires a contact classified as Customer and Supplier.")
-            )
         if self.journal_entry_id and not self.journal_entry.posted:
             raise ValidationError(_("A balance set-off requires a posted journal entry."))
         if self.voucher_id:
@@ -577,7 +564,7 @@ class BalanceSetoff(models.Model):
             if self.voucher.total != self.total_amount:
                 raise ValidationError(_("Set-off and voucher totals must match."))
             if self.voucher.party_id != self.party_id:
-                raise ValidationError(_("Set-off and voucher contacts must match."))
+                raise ValidationError(_("Set-off and voucher parties must match."))
             if self.voucher.voucher_date != self.setoff_date:
                 raise ValidationError(_("Set-off and voucher dates must match."))
             if self.voucher.journal_entry_id != self.journal_entry_id:
@@ -626,7 +613,7 @@ class SaleSetoffAllocation(models.Model):
             if self.sale.business_id != self.setoff.business_id:
                 raise ValidationError(_("Allocated sale must belong to the set-off business."))
             if self.sale.party_id != self.setoff.party_id:
-                raise ValidationError(_("Allocated sale must belong to the set-off contact."))
+                raise ValidationError(_("Allocated sale must belong to the set-off party."))
             if (
                 self.sale.kind != TradeDocument.Kind.SALE
                 or self.sale.status != TradeDocument.Status.POSTED
@@ -678,7 +665,7 @@ class PurchaseSetoffAllocation(models.Model):
             if self.purchase.business_id != self.setoff.business_id:
                 raise ValidationError(_("Allocated purchase must belong to the set-off business."))
             if self.purchase.party_id != self.setoff.party_id:
-                raise ValidationError(_("Allocated purchase must belong to the set-off contact."))
+                raise ValidationError(_("Allocated purchase must belong to the set-off party."))
             if (
                 self.purchase.kind != TradeDocument.Kind.PURCHASE
                 or self.purchase.status != TradeDocument.Status.POSTED

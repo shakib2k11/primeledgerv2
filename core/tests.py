@@ -71,10 +71,10 @@ class LocalizationTests(TestCase):
         )
 
         pages = {
-            "party-list": "যোগাযোগসমূহ",
+            "party-list": "পার্টিসমূহ",
             "sale-list": "বিক্রয়",
             "accounting-overview": "হিসাবের তালিকা",
-            "report-index": "যোগাযোগ তালিকা",
+            "report-index": "পার্টি তালিকা",
         }
         for route_name, translated_text in pages.items():
             with self.subTest(route_name=route_name):
@@ -233,6 +233,44 @@ class TenantDashboardTests(TestCase):
         response = self.client.get(reverse("party-list"), {"q": "Hidden"})
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Hidden Contact")
+
+    def test_party_ui_does_not_require_a_relationship_classification(self):
+        self.client.login(username="owner", password="test-password")
+        page = self.client.get(reverse("party-create"))
+        self.assertNotContains(page, 'name="kind"')
+        response = self.client.post(
+            reverse("party-create"),
+            {
+                "name": "Generic Trading Party",
+                "phone": "01700000001",
+                "email": "",
+                "address": "Dhaka",
+                "opening_balance": "0.00",
+            },
+        )
+        self.assertRedirects(response, reverse("party-list"))
+        party = Party.objects.get(name="Generic Trading Party")
+        self.assertEqual(party.kind, Party.Kind.BOTH)
+
+    def test_party_api_keeps_kind_optional_for_compatibility(self):
+        api = APIClient()
+        api.force_authenticate(self.user)
+        response = api.post(
+            "/api/v1/parties/",
+            {
+                "name": "API Generic Party",
+                "phone": "",
+                "email": "",
+                "address": "",
+                "opening_balance": "0.00",
+                "opening_balance_is_payable": False,
+                "is_active": True,
+            },
+            format="json",
+            HTTP_X_BUSINESS_ID=self.business.pk,
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["kind"], Party.Kind.BOTH)
 
     def test_business_admin_can_record_stock_movement_from_ui(self):
         self.client.login(username="owner", password="test-password")

@@ -2,7 +2,7 @@
 {% block title %}{% translate "New balance set-off | Prime Ledger" %}{% endblock %}
 {% block content %}
 <header class="page-heading detail-heading">
-  <div><div class="breadcrumb"><a href="{% url 'payment-center' %}">{% translate "Payments" %}</a><span>/</span><span>{% translate "Balance set-off" %}</span></div><span class="overline">{% translate "Contra settlement" %}</span><h1>{% translate "Set off mutual balances" %}</h1><p class="lede">{{ party.name }} {% translate "is both a customer and supplier. Allocate equal amounts to clear receivables against payables without moving cash." %}</p></div>
+  <div><div class="breadcrumb"><a href="{% url 'payment-center' %}">{% translate "Payments" %}</a><span>/</span><span>{% translate "Balance set-off" %}</span></div><span class="overline">{% translate "Contra settlement" %}</span><h1>{% translate "Set off mutual balances" %}</h1><p class="lede">{% translate "Allocate equal receivable and payable amounts for" %} {{ party.name }} {% translate "without moving cash." %}</p></div>
 </header>
 <form method="post" class="setoff-form" data-setoff-form>
   {% csrf_token %}{{ form.idempotency_key }}
@@ -13,14 +13,14 @@
   </section>
   <section class="setoff-ledgers">
     <article class="panel data-panel">
-      <div class="table-panel-heading"><div><span class="overline">{% translate "Accounts receivable" %}</span><h2>{% translate "Customer invoices" %}</h2></div></div>
+      <div class="table-panel-heading"><div><span class="overline">{% translate "Accounts receivable" %}</span><h2>{% translate "Sales invoices" %}</h2></div></div>
       <div class="table-wrap"><table><thead><tr><th>{% translate "Invoice" %}</th><th>{% translate "Date" %}</th><th class="numeric">{% translate "Balance" %}</th><th class="numeric">{% translate "Set off" %}</th></tr></thead><tbody>
         {% for document, field in form.sale_rows %}<tr><td><a class="table-link" href="{% url 'sale-detail' document.pk %}">{{ document.number }}</a></td><td>{{ document.document_date|date:"d M Y" }}</td><td class="numeric money">{{ document.balance_due|floatformat:2 }}</td><td class="numeric setoff-input">{{ field }}{{ field.errors }}</td></tr>{% endfor %}
       </tbody></table></div>
       <div class="setoff-subtotal"><span>{% translate "Receivable selected" %}</span><strong data-setoff-sale-total>0.00</strong></div>
     </article>
     <article class="panel data-panel">
-      <div class="table-panel-heading"><div><span class="overline">{% translate "Accounts payable" %}</span><h2>{% translate "Supplier purchases" %}</h2></div></div>
+      <div class="table-panel-heading"><div><span class="overline">{% translate "Accounts payable" %}</span><h2>{% translate "Purchase documents" %}</h2></div></div>
       <div class="table-wrap"><table><thead><tr><th>{% translate "Purchase" %}</th><th>{% translate "Date" %}</th><th class="numeric">{% translate "Balance" %}</th><th class="numeric">{% translate "Set off" %}</th></tr></thead><tbody>
         {% for document, field in form.purchase_rows %}<tr><td><a class="table-link" href="{% url 'purchase-detail' document.pk %}">{{ document.number }}</a></td><td>{{ document.document_date|date:"d M Y" }}</td><td class="numeric money">{{ document.balance_due|floatformat:2 }}</td><td class="numeric setoff-input">{{ field }}{{ field.errors }}</td></tr>{% endfor %}
       </tbody></table></div>

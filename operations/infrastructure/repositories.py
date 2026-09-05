@@ -546,7 +546,7 @@ class DjangoPurchasePaymentRepository:
         if amount <= 0:
             raise ValidationError(_("Payment amount must be greater than zero."))
         if remaining <= 0:
-            raise ValidationError(_("This supplier invoice is already paid in full."))
+            raise ValidationError(_("This payable is already paid in full."))
         if amount > remaining:
             raise ValidationError(
                 _("Payment cannot exceed the remaining balance of %(balance).2f.")
@@ -576,7 +576,7 @@ class DjangoPurchasePaymentRepository:
             entry=journal,
             account=payment_account,
             party=purchase.party,
-            description=f"Supplier payment for {purchase.number}",
+            description=f"Payment for purchase {purchase.number}",
             credit=amount,
         )
         journal.validate_for_posting()
@@ -699,11 +699,10 @@ class DjangoBalanceSetoffRepository:
             pk=party_id,
             business_id=business_id,
             is_active=True,
-            kind=Party.Kind.BOTH,
         ).first()
         if party is None:
             raise ValidationError(
-                _("Select an active contact classified as Customer and Supplier.")
+                _("Select an active party belonging to this business.")
             )
 
         existing = BalanceSetoff.objects.filter(
@@ -800,11 +799,11 @@ class DjangoBalanceSetoffRepository:
         )
         if len(sales) != len(sale_amounts):
             raise ValidationError(
-                _("Every receivable allocation must reference an open posted invoice for this contact.")
+                _("Every receivable allocation must reference an open posted invoice for this party.")
             )
         if len(purchases) != len(purchase_amounts):
             raise ValidationError(
-                _("Every payable allocation must reference an open posted purchase for this contact.")
+                _("Every payable allocation must reference an open posted purchase for this party.")
             )
         for document in sales:
             if document.document_date > setoff_date:
@@ -845,14 +844,14 @@ class DjangoBalanceSetoffRepository:
             entry=journal,
             account=payable_account,
             party=party,
-            description="Supplier balance set off",
+            description="Payable balance set off",
             debit=sale_total,
         )
         JournalLine.objects.create(
             entry=journal,
             account=receivable_account,
             party=party,
-            description="Customer balance set off",
+            description="Receivable balance set off",
             credit=sale_total,
         )
         journal.validate_for_posting()

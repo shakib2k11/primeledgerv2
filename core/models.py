@@ -109,7 +109,9 @@ class Party(models.Model):
 
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="parties")
     name = models.CharField(max_length=160)
-    kind = models.CharField(max_length=10, choices=Kind.choices)
+    # Deprecated compatibility field. Operational eligibility is derived from
+    # transactions; new delivery surfaces treat every record as a generic party.
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.BOTH)
     phone = models.CharField(max_length=40, blank=True)
     email = models.EmailField(blank=True)
     address = models.TextField(blank=True)
@@ -124,14 +126,12 @@ class Party(models.Model):
         return self.name
 
     def clean(self):
-        if self.pk and not self.inherit_default_units and self.products.filter(
-            unit__business__isnull=True
-        ).exists():
-            raise ValidationError({
-                "inherit_default_units": _(
-                    "Reassign products using default units to business-owned units before disabling inheritance."
-                )
-            })
+        self.name = self.name.strip()
+        if self.business_id and Party.objects.filter(
+            business_id=self.business_id,
+            name__iexact=self.name,
+        ).exclude(pk=self.pk).exists():
+            raise ValidationError({"name": _("A party with this name already exists.")})
 
 
 class InventoryUnitQuerySet(models.QuerySet):

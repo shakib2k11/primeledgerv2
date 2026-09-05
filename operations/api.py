@@ -190,7 +190,7 @@ class BalanceSetoffCreateSerializer(serializers.Serializer):
         business = self.context.get("business")
         if business:
             self.fields["party"].queryset = Party.objects.filter(
-                business=business, is_active=True, kind=Party.Kind.BOTH
+                business=business, is_active=True
             )
 
     def validate_setoff_date(self, value):
@@ -243,13 +243,8 @@ class TradeDocumentSerializer(serializers.ModelSerializer):
         business = self.context.get("business")
         kind = self.context.get("kind")
         if business:
-            party_kinds = (
-                [Party.Kind.CUSTOMER, Party.Kind.BOTH]
-                if kind == TradeDocument.Kind.SALE
-                else [Party.Kind.SUPPLIER, Party.Kind.BOTH]
-            )
             self.fields["party"].queryset = Party.objects.filter(
-                business=business, is_active=True, kind__in=party_kinds
+                business=business, is_active=True
             )
             self.fields["period"].queryset = FiscalPeriod.objects.filter(business=business, is_locked=False)
             accounts = Account.objects.filter(business=business, is_active=True)

@@ -62,14 +62,13 @@ class PartyForm(forms.ModelForm):
         if self.business and Party.objects.filter(
             business=self.business,
             name__iexact=cleaned.get("name", ""),
-            kind=cleaned.get("kind"),
         ).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError(_("A contact with this name and type already exists."))
+            raise forms.ValidationError(_("A party with this name already exists."))
         return cleaned
 
     class Meta:
         model = Party
-        fields = ["name", "kind", "phone", "email", "address", "opening_balance", "opening_balance_is_payable"]
+        fields = ["name", "phone", "email", "address", "opening_balance", "opening_balance_is_payable"]
         widgets = {"address": forms.Textarea(attrs={"rows": 3})}
 
 
@@ -139,7 +138,7 @@ class StockMovementForm(forms.ModelForm):
         ).order_by("name")
         self.fields["occurred_at"].initial = timezone.localtime().strftime("%Y-%m-%dT%H:%M")
         self.fields["reference"].label = _("Source reference")
-        self.fields["reference"].help_text = _("Optional supplier, adjustment, or source document reference.")
+        self.fields["reference"].help_text = _("Optional party, adjustment, or source document reference.")
 
     class Meta:
         model = StockMovement

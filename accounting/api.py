@@ -226,7 +226,12 @@ class JournalEntryViewSet(AccountingViewSet, viewsets.ModelViewSet):
     ordering_fields = ["entry_date", "reference", "created_at"]
 
     def get_queryset(self):
-        return JournalEntry.objects.filter(business=self.business).select_related("period").prefetch_related("lines")
+        return (
+            JournalEntry.objects.filter(business=self.business)
+            .select_related("period")
+            .prefetch_related("lines")
+            .order_by("-entry_date", "-id")
+        )
 
     def perform_destroy(self, instance):
         if instance.posted or instance.period.is_locked:
@@ -255,7 +260,11 @@ class VoucherViewSet(AccountingViewSet, viewsets.ModelViewSet):
     ordering_fields = ["voucher_date", "number", "total"]
 
     def get_queryset(self):
-        return Voucher.objects.filter(business=self.business).select_related("party", "journal_entry")
+        return (
+            Voucher.objects.filter(business=self.business)
+            .select_related("party", "journal_entry")
+            .order_by("-voucher_date", "-id")
+        )
 
     def perform_destroy(self, instance):
         raise DRFPermissionDenied("Financial vouchers cannot be deleted.")
